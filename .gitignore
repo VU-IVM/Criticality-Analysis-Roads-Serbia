@@ -1,0 +1,61 @@
+# -----------------------
+# Large data files
+# -----------------------
+*.tif
+*.tiff
+*.nc
+*.h5
+*.hdf5
+*.grib
+*.grb
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+*.csv
+*.parquet
+*.feather
+*.pkl
+*.shp
+*.gpkg
+*.pbf
+
+# -----------------------
+# Data folders
+# -----------------------
+data/
+datasets/
+input/
+inputs/
+raw/
+processed/
+output/
+outputs/
+results/
+cache/
+
+# -----------------------
+# Python
+# -----------------------
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# -----------------------
+# Jupyter
+# -----------------------
+.ipynb_checkpoints/
+
+# -----------------------
+# OS junk
+# -----------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------
+# IDE
+# -----------------------
+.vscode/
+.idea/
