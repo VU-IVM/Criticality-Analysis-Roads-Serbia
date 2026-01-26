@@ -14,7 +14,6 @@ import pandas as pd
 from pyproj import Geod
 from tqdm import tqdm
 import seaborn as sns
-import arcpy
 
 # Shapely-specific imports for spatial analysis
 import shapely
@@ -45,21 +44,10 @@ graph = ig.Graph.TupleList(edges.itertuples(index=False), edge_attrs=list(edges.
 
 # path to the Statments populaiton file
 
-#Path_StatementFile_Excel = data_path / "population_NEW_settlement_geocoded.xlsx"
+Path_StatementFile_Excel = data_path / "population_NEW_settlement_geocoded.xlsx"
 
 # reading the Excel file
-#DataFrame_StatePop = pd.read_excel(Path_StatementFile_Excel)
-
-statepop_excel = arcpy.GetParameterAsText(0)
-
-DataFrame_StatePop = pd.read_excel(statepop_excel)
-
-Clean_DataFrame_StatePop = DataFrame_StatePop.dropna(
-    subset=["latitude", "longitude", "Total"]
-)
-
-arcpy.AddMessage(f"Loaded Excel file: {statepop_excel}")
-
+DataFrame_StatePop = pd.read_excel(Path_StatementFile_Excel)
 
 # to keep only rows with valid coordinates and population
 Clean_DataFrame_StatePop = DataFrame_StatePop.dropna(subset=["latitude", "longitude", "Total"])
@@ -374,30 +362,3 @@ ax2.text(0.05, 0.95, 'B', transform=ax2.transAxes, fontsize=20, fontweight='bold
 plt.tight_layout()
 plt.savefig(Path("figures") / 'SPOF_results.png', dpi=300, bbox_inches='tight')
 plt.show()
-
-############################################
-#display map of criticality in arcgis
-#############################################
-
-#save to shp to arcgis can read it
-gdf_results[['from_id', 'to_id', 'objectid', 'oznaka_deo', 'smer_gdf1', 'kategorija',
-       'oznaka_put', 'oznaka_poc', 'naziv_poce', 'oznaka_zav', 'naziv_zavr',
-       'duzina_deo', 'pocetna_st', 'zavrsna_st', 'stanje', 'id',
-       'passenger_cars', 'buses', 'light_trucks', 'medium_trucks',
-       'heavy_trucks', 'articulated_vehicles', 'total_aadt', 'oznaka_deo_left',
-       'index_right', 'oznaka_deo_right', 'road_length', 'speed', 'fft',
-       'geometry', 'edge_no', 'pct_isolated', 'pct_unaffected', 'pct_delayed',
-       'average_time_disruption', 'distance_disruption', 'time_disruption','vhl']].to_file(intermediate_path / "criticality_results.shp")
-
-criticality_results = Path('intermediate_results') / "criticality_results.shp"
-arcpy.AddMessage(f"Criticality results saved to {criticality_results}")
-
-criticality_results = (
-    Path("intermediate_results") / "criticality_results.shp"
-).resolve()
-
-aprx = arcpy.mp.ArcGISProject("CURRENT")
-m = aprx.listMaps()[0]
-
-layer = m.addDataFromPath(str(criticality_results))
-arcpy.AddMessage(f"Criticality map added as layer: {layer.name}")

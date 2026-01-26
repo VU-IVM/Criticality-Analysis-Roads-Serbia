@@ -13,7 +13,6 @@ import pandas as pd
 from pyproj import Geod
 from tqdm import tqdm
 from exactextract import exact_extract
-import arcpy
 
 # Shapely-specific imports for spatial analysis
 import shapely
@@ -37,29 +36,9 @@ from simplify import *
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
-arcpy.env.overwriteOutput = True
 
-input_layer = arcpy.GetParameterAsText(0)
-
-base_tmp = Path(r"C:\Temp\arcgis_tmp")
-base_tmp.mkdir(parents=True, exist_ok=True)
-
-gdb_path = base_tmp / "temp.gdb"
-if not arcpy.Exists(str(gdb_path)):
-    arcpy.management.CreateFileGDB(str(base_tmp), "temp.gdb")
-
-out_fc_name = "roads"
-out_fc = gdb_path / out_fc_name
-
-# Copy input layer to GDB
-arcpy.management.CopyFeatures(input_layer, str(out_fc))
-
-# Read into GeoDataFrame if needed
-pers_network = gpd.read_file(str(gdb_path), layer=out_fc_name)
-arcpy.AddMessage(f"Loaded file with AADT")
-
-#roads_path = Path('input_files') / "roads_serbia_original_full_AADT.parquet"
-#pers_network = gpd.read_parquet(roads_path)
+roads_path = Path('input_files') / "roads_serbia_original_full_AADT.parquet"
+pers_network = gpd.read_parquet(roads_path)
 
 
 attributes = ['objectid','oznaka_deo','smer_gdf1','kategorija','oznaka_put','oznaka_poc','naziv_poce', 'oznaka_zav', 'naziv_zavr', 'duzina_deo',
@@ -172,9 +151,7 @@ def snap_network_iteratively(gdf, tolerance=2, search_buffer=30):
             print("Max iterations reached")
             break
     
-    #print(f"\nTotal snaps made: {total_snaps}")
-    arcpy.AddMessage(f"Snapped network iteratively.")
-    arcpy.AddMessage(f"\nTotal snaps made: {total_snaps}")
+    print(f"\nTotal snaps made: {total_snaps}")
     return gdf
 
 
@@ -324,9 +301,7 @@ def find_touching_roads_with_aadt(idx, gdf, buffer_dist=1):
 # ============================================
 # PASS 1: Fill from both endpoints touching roads with AADT
 # ============================================
-#print("Pass 1: Filling from roads touching both endpoints...")
-arcpy.AddMessage("Pass 1: Filling from roads touching both endpoints...")
-
+print("Pass 1: Filling from roads touching both endpoints...")
 
 missing_aadt = AADT_connected[AADT_connected['total_aadt'].isna()].index.tolist()
 filled_count_pass1 = 0
@@ -349,16 +324,12 @@ for idx in tqdm(missing_aadt,total=len(missing_aadt)):
         
         filled_count_pass1 += 1
 
-#print(f"Pass 1 filled {filled_count_pass1} roads")
-arcpy.AddMessage(f"Pass 1 filled {filled_count_pass1} roads")
+print(f"Pass 1 filled {filled_count_pass1} roads")
 
 # ============================================
 # PASS 2: Fill with median by kategorija, then cap by touching roads
 # ============================================
-#print("Pass 2: Filling with kategorija median...")
-arcpy.AddMessage("Pass 2: Filling with kategorija median...")
-
-
+print("Pass 2: Filling with kategorija median...")
 
 # Calculate median values per kategorija
 kategoria_medians = AADT_connected.groupby('kategorija')[traffic_cols].median()
@@ -393,13 +364,11 @@ for idx in tqdm(missing_aadt,total=len(missing_aadt)):
     
     filled_count_pass2 += 1
 
-#print(f"Pass 2 filled {filled_count_pass2} roads")
-arcpy.AddMessage(f"Pass 2 filled {filled_count_pass2} roads")
+print(f"Pass 2 filled {filled_count_pass2} roads")
 
 # Summary
 remaining_missing = AADT_connected['total_aadt'].isna().sum()
-#print(f"\nRemaining roads without AADT: {remaining_missing}")
-arcpy.AddMessage(f"\nRemaining roads without AADT: {remaining_missing}")
+print(f"\nRemaining roads without AADT: {remaining_missing}")
 
 
 # Load country outline
@@ -640,20 +609,3 @@ edges = edges[edges['id'].isin(graph.es['id'])]
 
 
 edges.reset_index(drop=True).set_crs(AADT_Serbia.crs).to_parquet(Path('intermediate_results') / 'PERS_directed_final.parquet')
-
-edges.reset_index(drop=True).set_crs(AADT_Serbia.crs).to_file(Path('intermediate_results') / 'PERS_directed_final.shp')
-
-
-directed_final = Path('intermediate_results') / "PERS_directed_final.shp"
-arcpy.AddMessage(f"Directed graph saved to {directed_final}")
-
-directed_final = (
-    Path("intermediate_results") / "PERS_directed_final.shp"
-).resolve()
-
-aprx = arcpy.mp.ArcGISProject("CURRENT")
-m = aprx.listMaps()[0]
-
-layer = m.addDataFromPath(str(directed_final))
-arcpy.AddMessage(f"Directed graph added as layer: {layer.name}")
-

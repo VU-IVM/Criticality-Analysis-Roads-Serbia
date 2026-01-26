@@ -15,7 +15,6 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-import arcpy
 
 # Shapely-specific imports for spatial analysis
 import shapely
@@ -40,6 +39,7 @@ warnings.simplefilter(action="ignore", category=RuntimeWarning)
 data_path = Path('input_files') 
 
 osm_path = data_path / "SRB.osm.pbf"
+roads_path = data_path / 'DeoniceRSDP-Jul2025..shp'
 
 # ===== Cell 3 =====
 features = gpd.read_file(osm_path, layer="lines")
@@ -201,25 +201,7 @@ plt.savefig(Path("figures") / 'osm_road_network.png', dpi=300, bbox_inches='tigh
 plt.show()
 
 # ===== Cell 7 =====
-
-input_layer = arcpy.GetParameterAsText(0)
-
-base_tmp = Path(r"C:\Temp\arcgis_tmp")
-base_tmp.mkdir(parents=True, exist_ok=True)
-
-gdb_path = base_tmp / "temp.gdb"
-if not arcpy.Exists(str(gdb_path)):
-    arcpy.management.CreateFileGDB(str(base_tmp), "temp.gdb")
-
-out_fc_name = "roads"
-out_fc = gdb_path / out_fc_name
-
-# Copy input layer to GDB
-arcpy.management.CopyFeatures(input_layer, str(out_fc))
-
-# Read into GeoDataFrame
-gdf = gpd.read_file(str(gdb_path), layer=out_fc_name)
-arcpy.AddMessage(f"Successfully loaded feature layer.")
+gdf = gpd.read_file(roads_path)
 
 # Filter for the road categories we want to plot
 road_categories = ['IA', 'IM', 'IB', 'IIA', 'IIB']
