@@ -25,8 +25,13 @@ import numpy as np
 import pandas as pd
 from pyproj import Geod
 from tqdm import tqdm
-from exactextract import exact_extract
-import arcpy
+#from exactextract import exact_extract
+try:
+    import arcpy
+    arcpy.env.overwriteOutput = True
+    ARCPY_AVAILABLE = True
+except ImportError:
+    ARCPY_AVAILABLE = False
 
 # Shapely-specific imports for spatial analysis
 import shapely
@@ -44,14 +49,11 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Local/Project imports
-from simplify import *
+#from simplify import *
 
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
-
-arcpy.env.overwriteOutput = True
-
 
 @dataclass
 class NetworkPrepConfig:
@@ -67,8 +69,15 @@ class NetworkPrepConfig:
     figures_path: Path = field(default_factory=lambda: Path('figures'))
     
     # ArcGIS parameters
-    arcgis_input_layer: Optional[str] = None
-    arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
+    # # ArcGIS parameters
+    if ARCPY_AVAILABLE:
+        arcgis_input_layer: Optional[str] = None
+        arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
+    else:
+        # If no arcpyinput
+        # check if temp folder useful
+        gis_input_layer: Optional[str] = osm_filename
+#        gis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
     
     # Network snapping parameters
     snap_tolerance: float = 2.0
@@ -193,8 +202,24 @@ def get_endpoints(geom) -> Tuple[Optional[Point], Optional[Point]]:
     else:
         return None, None
 
+def load_serbian_network_no_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Load Serbian road network from a GIS file path using GeoPandas.
+    
+    The file path is specified in ``config.gis_input_layer`` and is read using
+    :func:`geopandas.read_file`.
+    
+    Args:
+        config: Network configuration
+    """    
+    
+    # Read into GeoDataFrame
+    gdf = gpd.read_file(config.gis_input_layer)
+    print(f"Successfully loaded feature layer.")
+    
+    return gdf
 
-def load_network_from_arcgis(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
+def load_network_arcpy(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     """
     Load network from ArcGIS input layer.
     

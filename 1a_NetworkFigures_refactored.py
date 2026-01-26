@@ -21,7 +21,12 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-import arcpy
+# try if arcpy is available
+try:
+    import arcpy
+    ARCPY_AVAILABLE = True
+except ImportError:
+    ARCPY_AVAILABLE = False
 
 # Shapely-specific imports for spatial analysis
 import shapely
@@ -42,6 +47,10 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
+# Set working directory
+import os
+print(os.getcwd())
+os.chdir('/Users/joeldeplaen/Documents/GitHub/Analysis---Copy2')
 
 @dataclass
 class NetworkConfig:
@@ -54,10 +63,16 @@ class NetworkConfig:
     # Output paths
     output_path: Path = field(default_factory=lambda: Path('figures'))
     
-    # ArcGIS parameters
-    arcgis_input_layer: Optional[str] = None
-    arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
-    
+    # # ArcGIS parameters
+    if ARCPY_AVAILABLE:
+        arcgis_input_layer: Optional[str] = None
+        arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
+    else:
+        # If no arcpyinput
+        # check if temp folder useful
+        gis_input_layer: Optional[str] = osm_filename
+#        gis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
+        
     # OSM configuration
     osm_keys: List[str] = field(default_factory=lambda: [
         'highway', 'name', 'maxspeed', 'oneway', 'lanes', 'surface'
@@ -292,8 +307,24 @@ def plot_osm_network(base_network_filtered: gpd.GeoDataFrame,
                 dpi=config.figure_dpi, bbox_inches='tight')
     plt.show()
 
+def load_serbian_network_no_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Load Serbian road network from a GIS file path using GeoPandas.
+    
+    The file path is specified in ``config.gis_input_layer`` and is read using
+    :func:`geopandas.read_file`.
+    
+    Args:
+        config: Network configuration
+    """    
+    
+    # Read into GeoDataFrame
+    gdf = gpd.read_file(config.gis_input_layer)
+    print(f"Successfully loaded feature layer.")
+    
+    return gdf
 
-def load_serbian_network(config: NetworkConfig) -> gpd.GeoDataFrame:
+def load_serbian_network_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
     """
     Load Serbian road network from ArcGIS layer.
     
@@ -303,7 +334,7 @@ def load_serbian_network(config: NetworkConfig) -> gpd.GeoDataFrame:
     Returns:
         GeoDataFrame with Serbian road network
     """
-    # Get input layer from ArcGIS parameter
+    print("Successfully loaded road network from file.")
     input_layer = config.arcgis_input_layer or arcpy.GetParameterAsText(0)
     
     # Setup temporary GDB
@@ -598,7 +629,10 @@ def main():
     # Load and plot Serbian network (requires ArcGIS)
     try:
         print("Loading Serbian network...")
-        gdf = load_serbian_network(config)
+        if ARCPY_AVAILABLE:
+            gdf = load_serbian_network_arcpy(config)
+        else:
+            gdf = load_serbian_network_no_arcpy(config)
         
         print("Creating Serbian network plot...")
         plot_serbian_network(gdf, config)
