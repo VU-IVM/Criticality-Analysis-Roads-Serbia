@@ -76,7 +76,7 @@ def load_fire_stations(config: NetworkConfig) -> gpd.GeoDataFrame:
     return Sink
 
 
-def plot_access_curve_fire_station(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig):
+def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emergency_service) -> None:
 
     fig, ax_curve = plt.subplots(1, 1, figsize=(8, 4))
 
@@ -104,7 +104,18 @@ def plot_access_curve_fire_station(df_worldpop: gpd.GeoDataFrame, config: Networ
     ax_curve.plot(thresholds, percentage_population_within_threshold_2, linestyle='-', 
                 color='#003049', linewidth=2, label='Normal condition')
 
-    ax_curve.set_xlabel('Access time to closest fire station (hours)', fontsize=12)
+    if emergency_service == "firefighters":
+        ax_curve.set_xlabel('Access time to closest fire station (hours)', fontsize=12)
+    elif emergency_service == "hospitals":
+        ax_curve.set_xlabel('Access time to closest health facilities (hours)', fontsize=12)
+    elif emergency_service == "police":
+        ax_curve.set_xlabel('Access time to closest police station (hours)', fontsize=12)
+    else:
+        raise ValueError(
+            f"Invalid emergency_service '{emergency_service}'. "
+            "Expected one of: 'firefighters', 'hospitals', 'police'."
+        )
+
     ax_curve.set_ylabel('Population with access (%)', fontsize=12)
     ax_curve.legend(fontsize=10)
     ax_curve.minorticks_on()

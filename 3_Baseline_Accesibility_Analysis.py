@@ -46,6 +46,8 @@ class NetworkConfig:
     path_to_Sinks =data_path / "Borders_Ports_Rail_geocoded.xlsx"
     Path_SettlementData_Excel = data_path / "population_NEW_settlement_geocoded.xlsx"
     firefighters = data_path / "6_Firefighters_geocoded.xlsx"
+    hospitals = data_path / "4_Hospitals_healthcenters_geocoded.xlsx"
+    police_stations = data_path / "6_Police_geocoded.xlsx"
     
 
     #Output path
@@ -600,8 +602,19 @@ def load_and_map_sinks(config: NetworkConfig, nodes: pd.DataFrame, sink_type) ->
     if sink_type == "firefighters":
         Sink = pd.read_excel(config.firefighters)
         Sink = Sink.rename(columns={"lon": "Longitude", "lat": "Latitude"})
-        Sink['geometry'] = Sink.apply(lambda row: Point(row['Longitude'], row['Latitude']), axis=1)
-        Sink['vertex_id'] = Sink.geometry.apply(lambda x: nodes.iloc[nodes_sindex.nearest(x)].vertex_id).values    
+    elif sink_type == "hospitals":
+        Sink = pd.read_excel(config.hospitals)
+    elif sink_type == "police":
+        Sink = pd.read_excel(config.police_stations)
+        Sink = Sink.rename(columns={"lon": "Longitude", "lat": "Latitude"})
+    else:
+        raise ValueError(
+            f"Invalid sink_type '{sink_type}'. "
+            "Expected one of: 'firefighters', 'hospitals', 'police'."
+        )
+
+    Sink['geometry'] = Sink.apply(lambda row: Point(row['Longitude'], row['Latitude']), axis=1)
+    Sink['vertex_id'] = Sink.geometry.apply(lambda x: nodes.iloc[nodes_sindex.nearest(x)].vertex_id).values   
 
     return Sink
 
@@ -679,7 +692,7 @@ def save_firefighter_accessibilty_results(config: NetworkConfig, df_worldpop, Si
 
 
 
-def print_statistics_emergency_accessibility(df_settlements: pd.DataFrame, Sink: pd.DataFrame, category) -> None:
+def print_statistics_emergency_accessibility(df_settlements: pd.DataFrame, Sink: pd.DataFrame, emergency_service) -> None:
     """
     Print statistics of the access time calculations to the console.
     
@@ -696,8 +709,8 @@ def print_statistics_emergency_accessibility(df_settlements: pd.DataFrame, Sink:
 
     # Basic stats
     print(f"\nNumber of settlements: {len(df_settlements)}")
-    if category == "firefighters":
-        print(f"Number of fire departments: {len(Sink)}")
+    #if category == "firefighters":
+    print(f"Number of {emergency_service}: {len(Sink)}")
 
     print(f"\n--- Access Time Statistics (hours) ---")
     print(f"Mean:   {df_settlements['closest_sink_total_fft'].mean():.2f}")
@@ -712,8 +725,8 @@ def print_statistics_emergency_accessibility(df_settlements: pd.DataFrame, Sink:
         print(f"P{p}: {df_settlements['closest_sink_total_fft'].quantile(p/100):.2f}")
 
     # Category distribution
-    if category == "firefighters":
-        print(f"\n--- Settlements by Access Time Category to Fire Departments ---")
+    #if category == "firefighters":
+    print(f"\n--- Settlements by Access Time Category to {emergency_service} ---")
     bins = [0, 0.25, 0.5, 1, 1.5, 2, float('inf')]
     labels = ['0-15 minutes','15-30 minutes', '30-60 minutes', '60-90 minutes', '90-120 minutes', '120+ minutes']
     df_settlements['category'] = pd.cut(df_settlements['closest_sink_total_fft'], bins=bins, labels=labels, right=False)
@@ -722,8 +735,181 @@ def print_statistics_emergency_accessibility(df_settlements: pd.DataFrame, Sink:
     for cat, count in category_counts.items():
         pct = count / len(df_settlements) * 100
         print(f"  {cat}: {count} ({pct:.1f}%)")
+
+    print(f"\n--- Population sizes by Access Time Category to {emergency_service} in million ---")
+    df_worldpop_plot = gpd.GeoDataFrame(df_settlements, geometry='geometry', crs="EPSG:4326").to_crs(3857)
+    # Assign categories
+    df_worldpop_plot['category'] = pd.cut(df_worldpop_plot['closest_sink_total_fft'], 
+                                        bins=bins, labels=labels, right=False)
+
+    # Convert to object type to allow mixed values
+    df_worldpop_plot['category'] = df_worldpop_plot['category'].cat.add_categories(['Not Accessible'])
+
+    # Handle NaN values as "Not Accessible"
+    df_worldpop_plot.loc[df_worldpop_plot['category'].isna(), 'category'] = 'Not Accessible'
+
+    # Calculate total population per category
+    category_counts = df_worldpop_plot.groupby('category')['population'].sum()/1e6
+
+    for cat, count in category_counts.items():
+        pct = count / len(category_counts) * 100
+        print(f"  {cat}: {count} ({pct:.1f}%)")
     
 
+
+def print_statistics_emergency_accessibility2(df_worldpop_fire=None, Sink_fire=None, df_worldpop_hospital=None, Sink_hospitals=None, df_worldpop_police=None, Sink_police=None):
+
+        
+    # Define bins and labels
+    bins = [0, 0.25, 0.5, 1, 1.5, 2, float('inf')]
+    labels = ['0-15', '15-30', '30-60', '60-90', '90-120', '>120']
+
+    # Prepare datasets
+    datasets = {}
+
+    if df_worldpop_fire is not None and Sink_fire is not None:
+        datasets["Fire Departments"] = (df_worldpop_fire, Sink_fire)
+
+    if df_worldpop_hospital is not None and Sink_hospitals is not None:
+        datasets["Hospitals"] = (df_worldpop_hospital, Sink_hospitals)
+
+    if df_worldpop_police is not None and Sink_police is not None:
+        datasets["Police Stations"] = (df_worldpop_police, Sink_police)
+
+
+    print("=" * 70)
+    print("EMERGENCY SERVICES ACCESSIBILITY ANALYSIS")
+    print("=" * 70)
+
+    summary_data = []
+
+    for service_name, (df_worldpop, Sink) in datasets.items():
+        print(f"\n{'─' * 50}")
+        print(f"{service_name.upper()}")
+        print(f"{'─' * 50}")
+        
+        # Number of service locations
+        n_facilities = len(Sink)
+        print(f"\nNumber of {service_name}: {n_facilities:,}")
+        
+        # Number of settlements analyzed
+        n_settlements = len(df_worldpop)
+        print(f"Number of settlements analyzed: {n_settlements:,}")
+        
+        # Access time statistics (convert to minutes)
+        access_time_minutes = df_worldpop['closest_sink_total_fft'] * 60
+        
+        print(f"\nAccess Time Statistics (minutes):")
+        print(f"  Mean: {access_time_minutes.mean():.2f} minutes")
+        print(f"  Median: {access_time_minutes.median():.2f} minutes")
+        print(f"  Std Dev: {access_time_minutes.std():.2f} minutes")
+        print(f"  Min: {access_time_minutes.min():.2f} minutes")
+        print(f"  Max: {access_time_minutes.max():.2f} minutes")
+        
+        # Create categories
+        df_worldpop['category'] = pd.cut(df_worldpop['closest_sink_total_fft'], 
+                                        bins=bins, labels=labels, right=False)
+        df_worldpop['category'] = df_worldpop['category'].astype('object')
+        df_worldpop.loc[df_worldpop['category'].isna(), 'category'] = 'Not Accessible'
+        
+        # Distribution by category
+        print(f"\nSettlements by Access Time Category:")
+        cat_counts = df_worldpop['category'].value_counts()
+        cat_order = labels + ['Not Accessible']
+        for cat in cat_order:
+            if cat in cat_counts.index:
+                count = cat_counts[cat]
+                pct = (count / n_settlements) * 100
+                print(f"  {cat:>12} min: {count:>6,} settlements ({pct:>5.1f}%)")
+        
+        # Population-weighted analysis (if population column exists)
+        pop_col = None
+        for col in ['population', 'pop', 'worldpop', 'pop_sum', 'population_sum']:
+            if col in df_worldpop.columns:
+                pop_col = col
+                break
+        
+        if pop_col:
+            total_pop = df_worldpop[pop_col].sum()
+            print(f"\nTotal Population Covered: {total_pop:,.0f}")
+            
+            print(f"\nPopulation by Access Time Category:")
+            for cat in cat_order:
+                subset = df_worldpop[df_worldpop['category'] == cat]
+                if len(subset) > 0:
+                    pop = subset[pop_col].sum()
+                    pct = (pop / total_pop) * 100
+                    print(f"  {cat:>12} min: {pop:>12,.0f} people ({pct:>5.1f}%)")
+            
+            # Population-weighted mean access time
+            valid_data = df_worldpop[df_worldpop['closest_sink_total_fft'].notna()]
+            if len(valid_data) > 0 and valid_data[pop_col].sum() > 0:
+                weighted_mean = np.average(valid_data['closest_sink_total_fft'] * 60, 
+                                        weights=valid_data[pop_col])
+                print(f"\nPopulation-Weighted Mean Access Time: {weighted_mean:.2f} minutes")
+        
+        # Key thresholds
+        print(f"\nKey Coverage Statistics:")
+        within_15 = len(df_worldpop[df_worldpop['closest_sink_total_fft'] < 0.25])
+        within_30 = len(df_worldpop[df_worldpop['closest_sink_total_fft'] < 0.5])
+        within_60 = len(df_worldpop[df_worldpop['closest_sink_total_fft'] < 1])
+        beyond_60 = len(df_worldpop[df_worldpop['closest_sink_total_fft'] >= 1])
+        not_accessible = len(df_worldpop[df_worldpop['category'] == 'Not Accessible'])
+        
+        print(f"  Within 15 minutes: {within_15:,} ({within_15/n_settlements*100:.1f}%)")
+        print(f"  Within 30 minutes: {within_30:,} ({within_30/n_settlements*100:.1f}%)")
+        print(f"  Within 60 minutes: {within_60:,} ({within_60/n_settlements*100:.1f}%)")
+        print(f"  Beyond 60 minutes: {beyond_60:,} ({beyond_60/n_settlements*100:.1f}%)")
+        print(f"  Not Accessible: {not_accessible:,} ({not_accessible/n_settlements*100:.1f}%)")
+        
+        # Collect summary for comparison table
+        summary_data.append({
+            'Service': service_name,
+            'Facilities': n_facilities,
+            'Settlements': n_settlements,
+            'Mean Access (min)': round(access_time_minutes.mean(), 1),
+            'Median Access (min)': round(access_time_minutes.median(), 1),
+            'Within 15 min (%)': round(within_15/n_settlements*100, 1),
+            'Within 30 min (%)': round(within_30/n_settlements*100, 1),
+            'Within 60 min (%)': round(within_60/n_settlements*100, 1),
+            'Not Accessible (%)': round(not_accessible/n_settlements*100, 1)
+        })
+
+    # Comparison summary table
+    print("\n" + "=" * 70)
+    print("COMPARISON SUMMARY")
+    print("=" * 70)
+    summary_df = pd.DataFrame(summary_data)
+    print(summary_df.to_string(index=False))
+
+    # If population data exists, add population comparison
+    if pop_col:
+        print("\n" + "=" * 70)
+        print("POPULATION COVERAGE COMPARISON")
+        print("=" * 70)
+        
+        pop_summary = []
+        for service_name, (df_worldpop, Sink) in datasets.items():
+            df_worldpop['category'] = pd.cut(df_worldpop['closest_sink_total_fft'], 
+                                            bins=bins, labels=labels, right=False)
+            df_worldpop['category'] = df_worldpop['category'].astype('object')
+            df_worldpop.loc[df_worldpop['category'].isna(), 'category'] = 'Not Accessible'
+            
+            total_pop = df_worldpop[pop_col].sum()
+            pop_within_30 = df_worldpop[df_worldpop['closest_sink_total_fft'] < 0.5][pop_col].sum()
+            pop_within_60 = df_worldpop[df_worldpop['closest_sink_total_fft'] < 1][pop_col].sum()
+            pop_not_accessible = df_worldpop[df_worldpop['category'] == 'Not Accessible'][pop_col].sum()
+            
+            pop_summary.append({
+                'Service': service_name,
+                'Total Population': f"{total_pop:,.0f}",
+                'Pop Within 30 min': f"{pop_within_30:,.0f} ({pop_within_30/total_pop*100:.1f}%)",
+                'Pop Within 60 min': f"{pop_within_60:,.0f} ({pop_within_60/total_pop*100:.1f}%)",
+                'Pop Not Accessible': f"{pop_not_accessible:,.0f} ({pop_not_accessible/total_pop*100:.1f}%)"
+            })
+        
+        pop_df = pd.DataFrame(pop_summary)
+        print(pop_df.to_string(index=False))
 
 
 
@@ -737,41 +923,6 @@ def main():
     # Load OSM network
     print("Loading OSM network...")
     base_network = load_road_network(config)
-
-    # =============================================================================
-    # 3. Accessibility calculations for firefighters
-    # =============================================================================
-
-    print(f"\n--- Starting accessibility analysis for firefighters ---")
-
-    #Load population data
-    print("Loading population data...")
-    df_worldpop = load_population_data(config)
-
-    #Create graph for spatial matching
-    print("Creating graph representation of the road network...")
-    nodes_fire, graph_fire = create_graph_for_spatial_matching(base_network)
-
-    #Map each settlement to the closest node in the road network
-    print("Mapping each settlement to the closest node in the road network...")
-    df_worldpop = map_settlements_to_nodes_in_road_network(df_worldpop, nodes_fire)
-
-    #Load location of firefighters and map them to the nearest road network node
-    print("Loading firefighter locations...")
-    sink_firefighters = load_and_map_sinks(config, nodes_fire, "firefighters")
-
-    #Calculate the distance to the nearest firefighters
-    print("Calculating distance to the nearest fire station...")
-    df_worldpop = get_distance_to_nearest_facility(df_worldpop,sink_firefighters,graph_fire)
-
-    #print statistics of the accessibility analysis for firefighters to the console
-    print_statistics_emergency_accessibility(df_worldpop, sink_firefighters, "firefighters")
-
-    #Save results of accessibility analysis and firefighter locations to parquet
-    print("Saving results of accessibility analysis for firefighters...")
-    save_firefighter_accessibilty_results(config, df_worldpop, sink_firefighters)
-    print("Saved results to {config.Path_firefighter_accessibilty}")
-    print("Saved results to {config.Path_firefighters_sink}")
 
     # =============================================================================
     # 1. Accessibility Calculations for factories
@@ -808,28 +959,24 @@ def main():
     # =============================================================================
     # 2. Accessibility calculations for agricultural areas
     # =============================================================================
-
+    """
     print(f"\n--- Starting accessibility analysis for agricultural areas ---")
 
     #Load location data of agricultural areas
     print("Loading location data of agricultural areas...")
     df_agri = load_agricultural_data(config)
 
-    #Create graph for spatial matching
-    print("Creating graph representation of the road network...")
-    nodes_agri, graph_agri = create_graph_for_spatial_matching(base_network)
-
     #Map agricultural locations to nearest network nodes
     print("Mapping agricultural locations to nearest network nodes...")
-    df_agri['vertex_id'] = nearest_network_nodes(df_agri, nodes_agri)
+    df_agri['vertex_id'] = nearest_network_nodes(df_agri, nodes)
 
     #Load sinks (borders, ports, rail)
     print("Loading location data of border crossings, ports and rail cargo terminals...")
-    Sinks_road, Sinks_port, Sinks_rail, all_sinks = load_sinks(config, nodes_agri)
+    Sinks_road, Sinks_port, Sinks_rail, all_sinks = load_sinks(config, nodes)
 
     #Calculate OD matrices by sink type
     print("Calculating OD matrices for agricultural areas to border crossings, ports and rail cargo stations...")
-    df_agri = calculate_OD_matrix(df_agri, graph_agri, Sinks_road, Sinks_port, Sinks_rail, all_sinks)
+    df_agri = calculate_OD_matrix(df_agri, graph, Sinks_road, Sinks_port, Sinks_rail, all_sinks)
 
     #Create visualization of average access time from agricultural areas to border crossings, ports and rail 
     plot_accessibility(df_agri, all_sinks, config)
@@ -837,28 +984,76 @@ def main():
     #print statistics of the accessibility analysis for agricultural areas
     print_statistics_agriculture(df_agri)
     print(f"\n--- Accessibility analysis for agricultural areas complete. ---")
-
+    """
     # =============================================================================
     # 3. Accessibility calculations for firefighters
     # =============================================================================
 
-    print(f"\n--- Starting accessibility analysis for agricultural areas ---")
+    print(f"\n--- Starting accessibility analysis for firefighters ---")
 
     #Load population data
     print("Loading population data...")
-    df_worldpop = load_population_data(config)
-
-    #Create graph for spatial matching
-    print("Creating graph representation of the road network...")
-    nodes_fire, graph_fire = create_graph_for_spatial_matching(base_network)
+    df_settlements = load_population_data(config)
 
     #Map each settlement to the closest node in the road network
     print("Mapping each settlement to the closest node in the road network...")
-    df_worldpop = map_settlements_to_nodes_in_road_network(df_worldpop, nodes_fire)
-
+    df_settlements = map_settlements_to_nodes_in_road_network(df_settlements, nodes)
+    
     #Load location of firefighters and map them to the nearest road network node
-    print("Loading firefighter locations")
+    print("Loading firefighter locations...")
     sink_firefighters = load_and_map_sinks(config, nodes, "firefighters")
 
+    #Calculate the distance to the nearest firefighters
+    print("Calculating distance to the nearest fire station for each settlement...")
+    acessibility_firefighters = get_distance_to_nearest_facility(df_settlements,sink_firefighters,graph)
+
+    #print statistics of the accessibility analysis for firefighters to the console
+    #print_statistics_emergency_accessibility(acessibility_firefighters, sink_firefighters, "firefighters")
+    print_statistics_emergency_accessibility2(acessibility_firefighters, sink_firefighters)
+
+    #Save results of accessibility analysis and firefighter locations to parquet
+    print("Saving results of accessibility analysis for firefighters...")
+    save_firefighter_accessibilty_results(config, acessibility_firefighters, sink_firefighters)
+    print(f"Saved results to {config.Path_firefighter_accessibilty}")
+    print(f"Saved results to {config.Path_firefighters_sink}")
+    
+
+    # =============================================================================
+    # 4. Accessibility calculations for hospitals
+    # =============================================================================
+    """
+    print(f"\n--- Starting accessibility analysis for hospitals ---")
+
+    #Load location of hospitals and map them to the nearest road network node
+    print("Loading hospital locations...")
+    sink_hospitals = load_and_map_sinks(config, nodes, "hospitals")
+
+    #Calculate the distance to the nearest hospital for each settlement
+    print("Calculating distance to the nearest hospital...")
+    acessibility_hospitals = get_distance_to_nearest_facility(df_settlements,sink_hospitals,graph)
+
+    #print statistics of the accessibility analysis for hospitals to the console
+    print_statistics_emergency_accessibility(acessibility_hospitals, sink_hospitals, "hospitals")
+    
+    # =============================================================================
+    # 5. Accessibility calculations for police stations
+    # =============================================================================
+
+    print(f"\n--- Starting accessibility analysis for police stations ---")
+
+    #Load location of hospitals and map them to the nearest road network node
+    print("Loading location data of police stations...")
+    police_stations = load_and_map_sinks(config, nodes, "police")
+
+    #Calculate the distance to the nearest hospital for each settlement
+    print("Calculating distance to the nearest hospital...")
+    acessibility_police_stations = get_distance_to_nearest_facility(df_settlements,police_stations,graph)
+
+    #print statistics of the accessibility analysis for hospitals to the console
+    print_statistics_emergency_accessibility(acessibility_police_stations, police_stations, "police stations")
+
+
+    print_statistics_emergency_accessibility2(acessibility_firefighters, sink_firefighters, acessibility_hospitals, sink_hospitals, acessibility_police_stations, police_stations)
+    """
 if __name__ == "__main__":
     main()
