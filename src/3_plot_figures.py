@@ -26,54 +26,43 @@ from matplotlib.colors import ListedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import contextily as cx                                  
 from simplify import *
+from config.network_config import NetworkConfig
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=RuntimeWarning) # exactextract gives a warning that is invalid
 
 
-class NetworkConfig:
-    """Configuration for accesibility analysis and visualization."""
-
-    # Input paths
-    data_path = Path('input_files')
-    intermediate_results_path = Path('intermediate_results')
-    Path_RoadNetwork = data_path / "base_network_SRB_basins.parquet"
-    Path_FactoryFile = data_path / "2_Factory_Company_geolocations.xlsx"
-    path_to_Borders = data_path / "Borders_geocoded.xlsx"
-    Path_AgriFile = data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
-    path_to_Sinks =data_path / "Borders_Ports_Rail_geocoded.xlsx"
-    Path_SettlementData_Excel = data_path / "population_NEW_settlement_geocoded.xlsx"
-    firefighters = data_path / "6_Firefighters_geocoded.xlsx"
 
 
-    #Paths that are input and output
-    Path_firefighter_accessibilty = intermediate_results_path / 'firefighter_settle_results.parquet'
-    Path_firefighters_sink = intermediate_results_path / 'firefighters.parquet'
+def load_accessibility_results(config: NetworkConfig, facility_type) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+        
+    if facility_type == "firefighters":
+        gdf = gpd.read_parquet(config.Path_firefighter_accessibilty)
+        Sink = gpd.read_parquet(config.Path_firefighters_sink)
+
+    elif facility_type == "hospitals":
+        gdf = gpd.read_parquet(config.Path_hospital_accessibilty)
+        Sink = gpd.read_parquet(config.Path_hospital_sink)
+
+    elif facility_type == "police":
+        gdf = gpd.read_parquet(config.Path_police_accessibilty)
+        Sink = gpd.read_parquet(config.Path_police_sink)
+
+    elif facility_type == "factories":
+        gdf = gpd.read_parquet(config.Path_factory_accessibility)
+        Sink = gpd.read_parquet(config.Path_factory_sink)
+
+    elif facility_type == "agriculture":
+        gdf = gpd.read_parquet(config.Path_agriculture_accessibility)
+        Sink = gpd.read_parquet(config.Path_agriculture_sink)
+
+    else:
+        raise ValueError(
+            f"Invalid sink_type '{facility_type}'. "
+            "Expected one of: 'firefighters', 'hospitals', 'police', 'factories', 'agriculture'."
+        )
     
-
-    #Output path
-    figure_path = Path('figures')
-    
-
-    #Flag to set whether plots will be shown in a pop up window or not
-    show_figures = True
-
-
-
-
-def load_accessibility_results_firefighters(config: NetworkConfig) -> gpd.GeoDataFrame:
-
-
-    gdf = gpd.read_parquet(config.Path_firefighter_accessibilty)
-
-    return gdf
-
-
-def load_fire_stations(config: NetworkConfig) -> gpd.GeoDataFrame:
-
-    Sink = gpd.read_parquet(config.Path_firefighters_sink)
-
-    return Sink
+    return gdf, Sink
 
 
 def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emergency_service) -> None:
@@ -107,7 +96,7 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
     if emergency_service == "firefighters":
         ax_curve.set_xlabel('Access time to closest fire station (hours)', fontsize=12)
     elif emergency_service == "hospitals":
-        ax_curve.set_xlabel('Access time to closest health facilities (hours)', fontsize=12)
+        ax_curve.set_xlabel('Access time to closest health care facility (hours)', fontsize=12)
     elif emergency_service == "police":
         ax_curve.set_xlabel('Access time to closest police station (hours)', fontsize=12)
     else:
@@ -136,7 +125,145 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
         plt.show()
 
 
-def plot_access_time_fire_station_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
+def plot_access_times_factories(df_factories: pd.DataFrame, Sink: pd.DataFrame, config: NetworkConfig) -> None:
+    """
+    Visualize the average access times for factories to reach all border crossings.
+    
+    Args:
+        df_factories: data frame with industrial centers in Serbia, Sink: border crossings, config
+        
+    Returns:
+        Nothing
+    """
+
+    df_factories_plot = df_factories.to_crs(3857)
+    Sink_plot = gpd.GeoDataFrame(Sink, geometry='geometry', crs="EPSG:4326").to_crs(3857)
+
+    bins = [1, 2, 3, 4, 5, float('inf')]
+    labels = ['1-2', '2-3', '3-4', '4-5', '5+']
+    colors = ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494']
+
+    df_factories_plot['category'] = pd.cut(
+        df_factories_plot['avg_access_time'], 
+        bins=bins, labels=labels, right=False
+    )
+    df_factories_plot['category'] = df_factories_plot['category'].astype('object')
+    df_factories_plot.loc[df_factories_plot['category'].isna(), 'category'] = 'Not Accessible'
+
+    color_map = dict(zip(labels, colors))
+    color_map['Not Accessible'] = '#bdbdbd'
+
+    fig, ax = plt.subplots(figsize=(24, 14))
+
+    for category, color in color_map.items():
+        data = df_factories_plot[df_factories_plot['category'] == category]
+        if not data.empty:
+            data.plot(ax=ax, color=color, legend=False, linewidth=0.1, edgecolor='grey', markersize=200)
+
+    Sink_plot.plot(ax=ax, color='black', markersize=200, marker='^')
+    cx.add_basemap(ax, source=cx.providers.CartoDB.Positron)
+
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    legend_patches = [mpatches.Patch(color=color, label=f'{label} hours') 
+                    for label, color in zip(labels, colors)]
+    legend_patches.append(Line2D([0], [0], marker='^', color='black', lw=0, 
+                                label='Border Crossings', markersize=15))
+
+    ax.legend(handles=legend_patches, 
+            loc='upper right',
+            fontsize=12,
+            title='Average Travel Time',
+            title_fontsize=14,
+            frameon=True,
+            fancybox=True,
+            shadow=True,
+            framealpha=0.95)
+
+    plt.savefig(config.figure_path / 'factory_access_avg.png', dpi=200, bbox_inches='tight')
+    plt.show()
+
+
+#move this function to plotting script
+def plot_access_time_agriculture(df_agri: pd.DataFrame, Sinks: pd.DataFrame, config: NetworkConfig) -> None:
+    """
+    Create visualization of the average access times from agricultural areas to borders, ports and rail 
+    
+    Args:
+        Pandas DataFrame with agricultural areas, Pandas DataFrame with borders, ports and rail locations
+        
+    Returns:
+        Nothing
+    """
+    df_agri_plot = df_agri.to_crs(3857)
+    Sinks_plot = gpd.GeoDataFrame(Sinks, geometry='geometry', crs="EPSG:4326").to_crs(3857)
+
+    bins = [1, 2, 3, 4, 5, float('inf')]
+    labels_cat = ['1-2', '2-3', '3-4', '4-5', '5+']
+    colors = ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494']
+    color_map = dict(zip(labels_cat, colors))
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 8))
+
+    for ax, col, title in zip(axes, 
+                            ['avg_access_road', 'avg_access_port', 'avg_access_rail'],
+                            ["A","B","C"]):
+                            #['Road Border Crossings', 'Ports', 'Rail Terminals']):
+        
+        df_plot = df_agri_plot.copy()
+        df_plot['category'] = pd.cut(df_plot[col], bins=bins, labels=labels_cat, right=False)
+        df_plot['category'] = df_plot['category'].astype('object')
+        
+        for category, color in color_map.items():
+            data = df_plot[df_plot['category'] == category]
+            if not data.empty:
+                data.plot(ax=ax, color=color, legend=False, linewidth=0.1, edgecolor='grey', markersize=50)
+        
+        # Plot relevant sinks
+        if 'road' in col:
+            sink_subset = Sinks_plot[Sinks_plot['type'] == 'road']
+            marker = '^'
+        elif 'port' in col:
+            sink_subset = Sinks_plot[Sinks_plot['type'] == 'port']
+            marker = 's'
+        else:
+            sink_subset = Sinks_plot[Sinks_plot['type'] == 'rail']
+            marker = 'o'
+        
+        sink_subset.plot(ax=ax, color='black', markersize=100, marker=marker)
+        
+        cx.add_basemap(ax, source=cx.providers.CartoDB.Positron)
+
+        # Add letter label
+        ax.text(0.05, 0.95, title, transform=ax.transAxes, fontsize=20, 
+                fontweight='bold', verticalalignment='top',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+        
+        ax.set_aspect('equal')
+        ax.axis('off')
+        #ax.set_title(title, fontsize=18, fontweight='bold')
+
+    # Shared legend
+    legend_patches = [mpatches.Patch(color=color, label=f'{label} hours') 
+                    for label, color in zip(labels_cat, colors)]
+    legend_patches.extend([
+        Line2D([0], [0], marker='^', color='black', lw=0, label='Road Borders', markersize=12),
+        Line2D([0], [0], marker='s', color='black', lw=0, label='Ports', markersize=12),
+        Line2D([0], [0], marker='o', color='black', lw=0, label='Rail Terminals', markersize=12),
+    ])
+
+    fig.legend(handles=legend_patches, loc='lower center', ncol=8, fontsize=12, 
+            title='Average Access Time', title_fontsize=14)
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.12)
+    plt.savefig(config.figure_path / 'agriculture_access_by_type.png', dpi=200, bbox_inches='tight')
+    plt.show()
+
+
+
+def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, config: NetworkConfig, emergency_service) -> gpd.GeoDataFrame:
     # Prepare data
     #edges_gdf = gpd.GeoDataFrame(edges, geometry='geometry')
     df_worldpop_plot = gpd.GeoDataFrame(df_worldpop, geometry='geometry', crs="EPSG:4326").to_crs(3857)
@@ -181,9 +308,30 @@ def plot_access_time_fire_station_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.Da
     legend_patches = [mpatches.Patch(color=color, label=f'{label} minutes') 
                     for label, color in zip(labels, colors)]
     legend_patches.append(mpatches.Patch(color='#bdbdbd', label='Not Accessible'))
-    legend_patches.append(Line2D([0], [0], marker='+', color='red', lw=0, 
-                                label='Fire departments', markersize=15))
 
+
+    if emergency_service == "firefighters":
+        legend_patches.append(Line2D([0], [0], marker='+', color='red', lw=0, 
+                                label='Fire departments', markersize=15))
+        file_name = 'firefighter_access.png'
+
+    elif emergency_service == "hospitals":
+        legend_patches.append(Line2D([0], [0], marker='+', color='red', lw=0, 
+                                label='hospitals', markersize=15))
+        file_name = 'hospital_access.png'
+
+    elif emergency_service == "police":
+        legend_patches.append(Line2D([0], [0], marker='+', color='red', lw=0, 
+                                label='police stations', markersize=15))
+        file_name = 'police_station_access.png'
+
+    else:
+        raise ValueError(
+            f"Invalid sink_type '{emergency_service}'. "
+            "Expected one of: 'firefighters', 'hospitals', 'police'."
+        )
+
+    
     # Add legend
     ax.legend(handles=legend_patches, 
             loc='upper right',
@@ -195,7 +343,7 @@ def plot_access_time_fire_station_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.Da
             shadow=True,
             framealpha=0.95)
 
-    plt.savefig(config.figure_path / 'firefighter_access.png', dpi=200, bbox_inches='tight')
+    plt.savefig(config.figure_path / file_name, dpi=200, bbox_inches='tight')
 
     if config.show_figures == True:
         plt.show()
@@ -203,7 +351,8 @@ def plot_access_time_fire_station_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.Da
     return df_worldpop_plot
 
 
-def plot_fire_station_accessibility_chart(df_worldpop_plot):
+
+def plot_accessibility_chart(df_worldpop_plot, config, emergency_service):
 
     # Calculate total population per category
     pop_by_category = df_worldpop_plot.groupby('category')['population'].sum()/1e6
@@ -220,7 +369,7 @@ def plot_fire_station_accessibility_chart(df_worldpop_plot):
     pop_by_category_reversed = pop_by_category[::-1]
 
     # Create the plot
-    fig, ax = plt.subplots(figsize=(4, 7))
+    fig, ax = plt.subplots(figsize=(4.5, 7))
 
     # Create horizontal bar chart with narrower bars
     bars = ax.barh(range(len(pop_by_category_reversed)), pop_by_category_reversed.values, 
@@ -229,7 +378,24 @@ def plot_fire_station_accessibility_chart(df_worldpop_plot):
                 edgecolor='black', linewidth=1.5)
 
     # Customize the plot
-    ax.set_ylabel('Access Time (hours)', fontsize=14, fontweight='bold', labelpad=-40)
+    if emergency_service == "firefighters":
+        ax.set_ylabel('Access Time to closest fire station (hours)', fontsize=14, fontweight='bold', labelpad=10)
+        file_name = 'firefighter_access_chart.png'
+
+    elif emergency_service == "hospitals":
+        ax.set_ylabel('Access Time to closest health care facility (hours)', fontsize=14, fontweight='bold', labelpad=10)
+        file_name = 'hospital_access_chart.png'
+
+    elif emergency_service == "police":
+        ax.set_ylabel('Access Time to closest police station (hours)', fontsize=14, fontweight='bold', labelpad=10)
+        file_name = 'police_station_access_chart.png'
+
+    else:
+        raise ValueError(
+            f"Invalid sink_type '{emergency_service}'. "
+            "Expected one of: 'firefighters', 'hospitals', 'police'."
+        )
+    
     ax.set_xlabel('Population (in millions)', fontsize=14, fontweight='bold')
 
     # Set y-axis labels
@@ -254,6 +420,11 @@ def plot_fire_station_accessibility_chart(df_worldpop_plot):
                                 startangle=90,
                                 counterclock=False,
                                 wedgeprops={'edgecolor': 'black', 'linewidth': 1.5})
+    
+    plt.savefig(config.figure_path / file_name, dpi=200, bbox_inches='tight')
+    
+    if config.show_figures == True:
+        plt.show()
 
 
 
@@ -265,6 +436,28 @@ def main():
     # Initialize configuration
     config = NetworkConfig()
 
+    # =============================================================================
+    # 1. Plot accessibility results for factories
+    # =============================================================================
+
+    #Load results of acessibility analysis to factories to road borders
+    print("Loading results of factory accessibility analysis...")
+    df_factory_accessibility, df_factory_sinks = load_accessibility_results(config, "factories")
+
+    #create map of the access times of factories to road border crossings
+    plot_access_times_factories(df_factory_accessibility, df_factory_sinks, config)
+
+    
+    # =============================================================================
+    # 2. Plot accessibility results for agricultural areas
+    # =============================================================================
+
+    #Load results of acessibility analysis to agricultural areas to road border crossings, rail terminals and ports 
+    print("Loading results of accessibility analysis of agricultural areas...")
+    df_agriculture_accessibility, df_agriculture_sinks = load_accessibility_results(config, "agriculture")
+
+    #create map of the access times of factories to road border crossings
+    plot_access_time_agriculture(df_agriculture_accessibility, df_agriculture_sinks, config)
 
     # =============================================================================
     # 3. Plot accessibility results for firefighters
@@ -272,20 +465,51 @@ def main():
 
     #Load results of acessibility analysis to fire departments    
     print("Loading results of fire station accessibility analysis...")
-    df_firefighter_accessibility = load_accessibility_results_firefighters(config)
-
-    #Load location of fire stations
-    print("Loading location data of fire stations...")
-    df_fire_stations = load_fire_stations(config)
+    df_firefighter_accessibility, df_fire_stations = load_accessibility_results(config, "firefighters")
 
     # Plot the cumulative curve of the access times to the closest fire station   
-    plot_access_curve_fire_station(df_firefighter_accessibility, config)
+    plot_access_curve(df_firefighter_accessibility, config, "firefighters")
 
     #Plot a map that shows the accessibility time of each settlement to the clostest fire station 
-    df_worldpop_plot = plot_access_time_fire_station_map(df_firefighter_accessibility, df_fire_stations, config)
+    df_worldpop_plot = plot_access_time_map(df_firefighter_accessibility, df_fire_stations, config, "firefighters")
 
     #Create a combined bar and pie chart to show the percentage of the population that fall in each access time category
-    plot_fire_station_accessibility_chart(df_worldpop_plot)
+    plot_accessibility_chart(df_worldpop_plot, config, "firefighters")
+
+    # =============================================================================
+    # 4. Plot accessibility results for hospitals
+    # =============================================================================
+
+    #Load results of acessibility analysis to hospitals    
+    print("Loading results of hospital accessibility analysis...")
+    df_hospital_accessibility, df_hospitals = load_accessibility_results(config, "hospitals")
+
+    # Plot the cumulative curve of the access times to the closest fire station   
+    plot_access_curve(df_hospital_accessibility, config, "hospitals")
+
+    #Plot a map that shows the accessibility time of each settlement to the clostest fire station 
+    df_worldpop_plot = plot_access_time_map(df_hospital_accessibility, df_hospitals, config, "hospitals")
+
+    #Create a combined bar and pie chart to show the percentage of the population that fall in each access time category
+    plot_accessibility_chart(df_worldpop_plot, config, "hospitals")
+
+
+    # =============================================================================
+    # 5. Plot accessibility results for police stations
+    # =============================================================================
+
+    #Load results of acessibility analysis to hospitals    
+    print("Loading results of police station accessibility analysis...")
+    df_police_accessibility, df_police = load_accessibility_results(config, "police")
+
+    # Plot the cumulative curve of the access times to the closest fire station   
+    plot_access_curve(df_police_accessibility, config, "police")
+
+    #Plot a map that shows the accessibility time of each settlement to the clostest fire station 
+    df_worldpop_plot = plot_access_time_map(df_police_accessibility, df_police, config, "police")
+
+    #Create a combined bar and pie chart to show the percentage of the population that fall in each access time category
+    plot_accessibility_chart(df_worldpop_plot, config, "police")
 
 
 

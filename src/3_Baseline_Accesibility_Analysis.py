@@ -1,5 +1,4 @@
 import warnings,sys,os
-from dataclasses import dataclass, field
 import xarray as xr
 import numpy as np
 import pandas as pd
@@ -28,32 +27,12 @@ from matplotlib.colors import ListedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import contextily as cx                                  
 from simplify import *
+from config.network_config import NetworkConfig
+
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=RuntimeWarning) # exactextract gives a warning that is invalid
 
-@dataclass
-class NetworkConfig:
-    """Configuration for accesibility analysis and visualization."""
-
-    # Input paths
-    data_path = Path('input_files')
-    intermediate_results_path = Path('intermediate_results')
-    Path_RoadNetwork = data_path / "base_network_SRB_basins.parquet"
-    Path_FactoryFile = data_path / "2_Factory_Company_geolocations.xlsx"
-    path_to_Borders = data_path / "Borders_geocoded.xlsx"
-    Path_AgriFile = data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
-    path_to_Sinks =data_path / "Borders_Ports_Rail_geocoded.xlsx"
-    Path_SettlementData_Excel = data_path / "population_NEW_settlement_geocoded.xlsx"
-    firefighters = data_path / "6_Firefighters_geocoded.xlsx"
-    hospitals = data_path / "4_Hospitals_healthcenters_geocoded.xlsx"
-    police_stations = data_path / "6_Police_geocoded.xlsx"
-    
-
-    #Output path
-    figure_path = Path('figures')
-    Path_firefighter_accessibilty = intermediate_results_path / 'firefighter_settle_results.parquet'
-    Path_firefighters_sink = intermediate_results_path / 'firefighters.parquet'
 
 
 def load_road_network(config: NetworkConfig) -> gpd.GeoDataFrame:
@@ -195,6 +174,7 @@ def calculate_average_access_time(df_factories: gpd.GeoDataFrame, Sink: pd.DataF
     return df_factories['avg_access_time'], OD_baseline
 
 
+#Move this to the plotting script
 def plot_access_times(df_factories: pd.DataFrame, Sink: pd.DataFrame, config: NetworkConfig) -> None:
     """
     Visualize the average access times for factories to reach all border crossings.
@@ -465,80 +445,6 @@ def print_statistics_agriculture(df_agri: pd.DataFrame) -> None:
             print(f"  {c}: {count} ({pct:.1f}%)")
 
 
-def plot_accessibility(df_agri: pd.DataFrame, Sinks: pd.DataFrame, config: NetworkConfig) -> None:
-    """
-    Create visualization of the average access times from agricultural areas to borders, ports and rail 
-    
-    Args:
-        Pandas DataFrame with agricultural areas, Pandas DataFrame with borders, ports and rail locations
-        
-    Returns:
-        Nothing
-    """
-    df_agri_plot = df_agri.to_crs(3857)
-    Sinks_plot = gpd.GeoDataFrame(Sinks, geometry='geometry', crs="EPSG:4326").to_crs(3857)
-
-    bins = [1, 2, 3, 4, 5, float('inf')]
-    labels_cat = ['1-2', '2-3', '3-4', '4-5', '5+']
-    colors = ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494']
-    color_map = dict(zip(labels_cat, colors))
-
-    fig, axes = plt.subplots(1, 3, figsize=(16, 8))
-
-    for ax, col, title in zip(axes, 
-                            ['avg_access_road', 'avg_access_port', 'avg_access_rail'],
-                            ["A","B","C"]):
-                            #['Road Border Crossings', 'Ports', 'Rail Terminals']):
-        
-        df_plot = df_agri_plot.copy()
-        df_plot['category'] = pd.cut(df_plot[col], bins=bins, labels=labels_cat, right=False)
-        df_plot['category'] = df_plot['category'].astype('object')
-        
-        for category, color in color_map.items():
-            data = df_plot[df_plot['category'] == category]
-            if not data.empty:
-                data.plot(ax=ax, color=color, legend=False, linewidth=0.1, edgecolor='grey', markersize=50)
-        
-        # Plot relevant sinks
-        if 'road' in col:
-            sink_subset = Sinks_plot[Sinks_plot['type'] == 'road']
-            marker = '^'
-        elif 'port' in col:
-            sink_subset = Sinks_plot[Sinks_plot['type'] == 'port']
-            marker = 's'
-        else:
-            sink_subset = Sinks_plot[Sinks_plot['type'] == 'rail']
-            marker = 'o'
-        
-        sink_subset.plot(ax=ax, color='black', markersize=100, marker=marker)
-        
-        cx.add_basemap(ax, source=cx.providers.CartoDB.Positron)
-
-        # Add letter label
-        ax.text(0.05, 0.95, title, transform=ax.transAxes, fontsize=20, 
-                fontweight='bold', verticalalignment='top',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
-        
-        ax.set_aspect('equal')
-        ax.axis('off')
-        #ax.set_title(title, fontsize=18, fontweight='bold')
-
-    # Shared legend
-    legend_patches = [mpatches.Patch(color=color, label=f'{label} hours') 
-                    for label, color in zip(labels_cat, colors)]
-    legend_patches.extend([
-        Line2D([0], [0], marker='^', color='black', lw=0, label='Road Borders', markersize=12),
-        Line2D([0], [0], marker='s', color='black', lw=0, label='Ports', markersize=12),
-        Line2D([0], [0], marker='o', color='black', lw=0, label='Rail Terminals', markersize=12),
-    ])
-
-    fig.legend(handles=legend_patches, loc='lower center', ncol=8, fontsize=12, 
-            title='Average Access Time', title_fontsize=14)
-
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.12)
-    plt.savefig(config.figure_path / 'agriculture_access_by_type.png', dpi=200, bbox_inches='tight')
-    plt.show()
 
 
 def load_population_data(config: NetworkConfig) -> gpd.GeoDataFrame:
@@ -686,78 +592,37 @@ def get_distance_to_nearest_facility(df_population: gpd.GeoDataFrame, Sink: pd.D
     return df_population
 
 
-def save_firefighter_accessibilty_results(config: NetworkConfig, df_worldpop, Sink) -> None:
-    df_worldpop.to_parquet(config.Path_firefighter_accessibilty)
-    gpd.GeoDataFrame(Sink).to_parquet(config.Path_firefighters_sink)
+def save_accessibilty_results(config: NetworkConfig, df_worldpop, Sink, facility_type) -> None:
 
+    if facility_type == "firefighters":
+        df_worldpop.to_parquet(config.Path_firefighter_accessibilty)
+        gpd.GeoDataFrame(Sink).to_parquet(config.Path_firefighters_sink)
 
+    elif facility_type == "hospitals":
+        df_worldpop.to_parquet(config.Path_hospital_accessibilty)
+        gpd.GeoDataFrame(Sink).to_parquet(config.Path_hospital_sink)
 
-def print_statistics_emergency_accessibility(df_settlements: pd.DataFrame, Sink: pd.DataFrame, emergency_service) -> None:
-    """
-    Print statistics of the access time calculations to the console.
+    elif facility_type == "police":
+        df_worldpop.to_parquet(config.Path_police_accessibilty)
+        gpd.GeoDataFrame(Sink).to_parquet(config.Path_police_sink)
     
-    Args:
-        df_factories: data frame with industrial centers in Serbia, Sink: border crossings, np.array: origin-destination matrix
-        
-    Returns:
-        None
-    """
-
-    print("="*60)
-    print("BASELINE ACCESSIBILITY SUMMARY")
-    print("="*60)
-
-    # Basic stats
-    print(f"\nNumber of settlements: {len(df_settlements)}")
-    #if category == "firefighters":
-    print(f"Number of {emergency_service}: {len(Sink)}")
-
-    print(f"\n--- Access Time Statistics (hours) ---")
-    print(f"Mean:   {df_settlements['closest_sink_total_fft'].mean():.2f}")
-    print(f"Median: {df_settlements['closest_sink_total_fft'].median():.2f}")
-    print(f"Std:    {df_settlements['closest_sink_total_fft'].std():.2f}")
-    print(f"Min:    {df_settlements['closest_sink_total_fft'].min():.2f}")
-    print(f"Max:    {df_settlements['closest_sink_total_fft'].max():.2f}")
-
-    # Percentiles
-    print(f"\n--- Percentiles (hours) ---")
-    for p in [10, 25, 50, 75, 90, 95]:
-        print(f"P{p}: {df_settlements['closest_sink_total_fft'].quantile(p/100):.2f}")
-
-    # Category distribution
-    #if category == "firefighters":
-    print(f"\n--- Settlements by Access Time Category to {emergency_service} ---")
-    bins = [0, 0.25, 0.5, 1, 1.5, 2, float('inf')]
-    labels = ['0-15 minutes','15-30 minutes', '30-60 minutes', '60-90 minutes', '90-120 minutes', '120+ minutes']
-    df_settlements['category'] = pd.cut(df_settlements['closest_sink_total_fft'], bins=bins, labels=labels, right=False)
-
-    category_counts = df_settlements['category'].value_counts().sort_index()
-    for cat, count in category_counts.items():
-        pct = count / len(df_settlements) * 100
-        print(f"  {cat}: {count} ({pct:.1f}%)")
-
-    print(f"\n--- Population sizes by Access Time Category to {emergency_service} in million ---")
-    df_worldpop_plot = gpd.GeoDataFrame(df_settlements, geometry='geometry', crs="EPSG:4326").to_crs(3857)
-    # Assign categories
-    df_worldpop_plot['category'] = pd.cut(df_worldpop_plot['closest_sink_total_fft'], 
-                                        bins=bins, labels=labels, right=False)
-
-    # Convert to object type to allow mixed values
-    df_worldpop_plot['category'] = df_worldpop_plot['category'].cat.add_categories(['Not Accessible'])
-
-    # Handle NaN values as "Not Accessible"
-    df_worldpop_plot.loc[df_worldpop_plot['category'].isna(), 'category'] = 'Not Accessible'
-
-    # Calculate total population per category
-    category_counts = df_worldpop_plot.groupby('category')['population'].sum()/1e6
-
-    for cat, count in category_counts.items():
-        pct = count / len(category_counts) * 100
-        print(f"  {cat}: {count} ({pct:.1f}%)")
+    elif facility_type == "factories":
+        df_worldpop.to_parquet(config.Path_factory_accessibility)
+        gpd.GeoDataFrame(Sink).to_parquet(config.Path_factory_sink)
     
+    elif facility_type == "agriculture":
+        df_worldpop.to_parquet(config.Path_agriculture_accessibility)
+        gpd.GeoDataFrame(Sink).to_parquet(config.Path_agriculture_sink)
+
+    else:
+        raise ValueError(
+            f"Invalid sink_type '{facility_type}'. "
+            "Expected one of: 'firefighters', 'hospitals', 'police', 'factories', 'agriculture'."
+        )
 
 
-def print_statistics_emergency_accessibility2(df_worldpop_fire=None, Sink_fire=None, df_worldpop_hospital=None, Sink_hospitals=None, df_worldpop_police=None, Sink_police=None):
+
+def print_statistics_emergency_accessibility(df_worldpop_fire=None, Sink_fire=None, df_worldpop_hospital=None, Sink_hospitals=None, df_worldpop_police=None, Sink_police=None):
 
         
     # Define bins and labels
@@ -948,18 +813,17 @@ def main():
     df_factories['avg_access_time'], OD_baseline = calculate_average_access_time(df_factories, border_crossings, graph)
     print(f"Baseline average access time: {np.mean(OD_baseline):.2f} hours")
 
-    #Visualize access time of factories to road border crossings
-    plot_access_times(df_factories, border_crossings, config)
-
-    #print statistics of the accessibility analysis
-    print_statistics(df_factories, border_crossings, OD_baseline)
+    #save results of analysis as .parquet files
+    save_accessibilty_results(config, df_factories, border_crossings, "factories")
+    print(f"Saved results to {config.Path_factory_accessibility}")
+    print(f"Saved results to {config.Path_factory_sink}")
 
     print(f"\n--- Accessibility analysis for factories complete. ---")
 
     # =============================================================================
     # 2. Accessibility calculations for agricultural areas
     # =============================================================================
-    """
+    
     print(f"\n--- Starting accessibility analysis for agricultural areas ---")
 
     #Load location data of agricultural areas
@@ -978,13 +842,14 @@ def main():
     print("Calculating OD matrices for agricultural areas to border crossings, ports and rail cargo stations...")
     df_agri = calculate_OD_matrix(df_agri, graph, Sinks_road, Sinks_port, Sinks_rail, all_sinks)
 
-    #Create visualization of average access time from agricultural areas to border crossings, ports and rail 
-    plot_accessibility(df_agri, all_sinks, config)
+    #save results of analysis as .parquet files
+    save_accessibilty_results(config, df_agri, all_sinks, "agriculture")
+    print(f"Saved results to {config.Path_agriculture_accessibility}")
+    print(f"Saved results to {config.Path_agriculture_sink}")
 
-    #print statistics of the accessibility analysis for agricultural areas
-    print_statistics_agriculture(df_agri)
     print(f"\n--- Accessibility analysis for agricultural areas complete. ---")
-    """
+    
+    
     # =============================================================================
     # 3. Accessibility calculations for firefighters
     # =============================================================================
@@ -1007,21 +872,18 @@ def main():
     print("Calculating distance to the nearest fire station for each settlement...")
     acessibility_firefighters = get_distance_to_nearest_facility(df_settlements,sink_firefighters,graph)
 
-    #print statistics of the accessibility analysis for firefighters to the console
-    #print_statistics_emergency_accessibility(acessibility_firefighters, sink_firefighters, "firefighters")
-    print_statistics_emergency_accessibility2(acessibility_firefighters, sink_firefighters)
-
     #Save results of accessibility analysis and firefighter locations to parquet
-    print("Saving results of accessibility analysis for firefighters...")
-    save_firefighter_accessibilty_results(config, acessibility_firefighters, sink_firefighters)
+    save_accessibilty_results(config, acessibility_firefighters, sink_firefighters, "firefighters")
     print(f"Saved results to {config.Path_firefighter_accessibilty}")
     print(f"Saved results to {config.Path_firefighters_sink}")
+
+    print(f"\n--- Accessibility analysis for firefighters complete. ---")
     
 
     # =============================================================================
     # 4. Accessibility calculations for hospitals
     # =============================================================================
-    """
+    
     print(f"\n--- Starting accessibility analysis for hospitals ---")
 
     #Load location of hospitals and map them to the nearest road network node
@@ -1032,8 +894,11 @@ def main():
     print("Calculating distance to the nearest hospital...")
     acessibility_hospitals = get_distance_to_nearest_facility(df_settlements,sink_hospitals,graph)
 
-    #print statistics of the accessibility analysis for hospitals to the console
-    print_statistics_emergency_accessibility(acessibility_hospitals, sink_hospitals, "hospitals")
+    save_accessibilty_results(config, acessibility_hospitals, sink_hospitals, "hospitals")
+    print(f"Saved results to {config.Path_hospital_accessibilty}")
+    print(f"Saved results to {config.Path_hospital_sink}")
+
+    print(f"\n--- Accessibility analysis for hospitals complete. ---")
     
     # =============================================================================
     # 5. Accessibility calculations for police stations
@@ -1041,19 +906,24 @@ def main():
 
     print(f"\n--- Starting accessibility analysis for police stations ---")
 
-    #Load location of hospitals and map them to the nearest road network node
+    #Load location of police stations and map them to the nearest road network node
     print("Loading location data of police stations...")
     police_stations = load_and_map_sinks(config, nodes, "police")
 
-    #Calculate the distance to the nearest hospital for each settlement
-    print("Calculating distance to the nearest hospital...")
+    #Calculate the distance to the nearest police station for each settlement
+    print("Calculating distance to the nearest police station...")
     acessibility_police_stations = get_distance_to_nearest_facility(df_settlements,police_stations,graph)
 
-    #print statistics of the accessibility analysis for hospitals to the console
-    print_statistics_emergency_accessibility(acessibility_police_stations, police_stations, "police stations")
+    save_accessibilty_results(config, acessibility_police_stations, police_stations, "police")
+    print(f"Saved results to {config.Path_police_accessibilty}")
+    print(f"Saved results to {config.Path_police_sink}")
 
+    print(f"\n--- Accessibility analysis for police stations complete. ---\n")
 
-    print_statistics_emergency_accessibility2(acessibility_firefighters, sink_firefighters, acessibility_hospitals, sink_hospitals, acessibility_police_stations, police_stations)
-    """
+    #print combined accessibility summary for firefighters, hospitals and police stations
+    if config.print_statistics == True:
+        print_statistics_emergency_accessibility(acessibility_firefighters, sink_firefighters, acessibility_hospitals, sink_hospitals, acessibility_police_stations, police_stations)
+    
+
 if __name__ == "__main__":
     main()

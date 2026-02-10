@@ -227,7 +227,7 @@ ax.legend(handles=legend_elements, title='Snow Drift Length', loc='upper right',
 
 plt.tight_layout()
 plt.savefig(figure_path / 'snow_drift_map.png', dpi=300, bbox_inches='tight')
-plt
+plt.show()
 
 # ===== Cell 9 =====
 landslides = gpd.read_file(data_path / "Nestabilne_pojave.shp")
@@ -295,6 +295,4 @@ ax.legend(handles=legend_elements, title='Year Recorded', loc='upper right',
 plt.tight_layout()
 plt.savefig(figure_path / 'landslides_map_by_year.png', dpi=300, bbox_inches='tight')
 plt.show()
-
-# ===== Cell 11 =====
 
