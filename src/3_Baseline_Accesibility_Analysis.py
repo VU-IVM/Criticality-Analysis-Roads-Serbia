@@ -396,7 +396,79 @@ def calculate_OD_matrix(df_agri: pd.DataFrame, graph: ig.Graph, Sinks_road: pd.D
     df_agri['avg_access_rail'] = df_agri['vertex_id'].map(rail_access)
     df_agri['avg_access_all'] = df_agri['vertex_id'].map(all_access)
 
+    df_agri['nearest_access_road'] = get_distance_to_nearest_facility_agriculture(df_agri, Sinks_road, graph)['closest_sink_total_fft']
+    df_agri['nearest_access_port'] = get_distance_to_nearest_facility_agriculture(df_agri, Sinks_port, graph)['closest_sink_total_fft']
+    df_agri['nearest_access_rail'] = get_distance_to_nearest_facility_agriculture(df_agri, Sinks_rail, graph)['closest_sink_total_fft']
+
     return df_agri
+
+def get_distance_to_nearest_facility_agriculture(df_population: gpd.GeoDataFrame, Sink: pd.DataFrame, graph: ig.Graph) -> gpd.GeoDataFrame:
+    """
+    Calculate the distance to the nearest facility (border, rail terminal, port) for each agricultural area 
+    
+    Args:
+        df_population: GeoDataFrame containing the agricultural areas and their location, Sink: DataFrame with the sinks (firefighters, police stations, hospitals) graph: graph of the road network         
+
+    Returns:
+        GeoPandas DataFrame the distance to the nearest facility assinged to each agricultural area
+    """
+
+    # Initialize new columns
+    df_population = df_population.copy()
+    df_population['closest_sink_vertex_id'] = None
+    df_population['closest_sink_osm_id'] = None
+    df_population['closest_sink_total_fft'] = None
+    
+    # Get unique vertex IDs for both population and sinks
+    unique_pop_vertex_ids = df_population['vertex_id'].unique()
+    unique_sink_vertex_ids = Sink['vertex_id'].unique()
+    
+    # Create mapping from unique sink vertex_ids back to original sink data
+    sink_lookup = {}
+    for _, row in Sink.iterrows():
+        sink_lookup[row['vertex_id']] = row['N°']
+    
+    # Calculate distance matrix once for unique vertices only
+    distance_matrix = np.array(graph.distances(
+        source=unique_pop_vertex_ids,
+        target=unique_sink_vertex_ids, 
+        weights='fft'
+    ))
+    
+    # Create lookup dictionary: vertex_id -> (closest_sink_vertex_id, closest_sink_osm_id, min_distance)
+    vertex_to_closest_sink = {}
+    
+    for i, pop_vertex_id in enumerate(unique_pop_vertex_ids):
+        # Get distances from this population point to all unique sinks
+        distances_to_sinks = distance_matrix[i, :]
+        
+        # Find the index of the minimum distance
+        min_sink_idx = np.argmin(distances_to_sinks)
+        min_distance = distances_to_sinks[min_sink_idx]
+        
+        # Handle infinite distances (no path found)
+        if np.isinf(min_distance):
+            vertex_to_closest_sink[pop_vertex_id] = (None, None, float('inf'))
+        else:
+            closest_sink_vertex_id = unique_sink_vertex_ids[min_sink_idx]
+            closest_sink_osm_id = sink_lookup[closest_sink_vertex_id]
+            vertex_to_closest_sink[pop_vertex_id] = (
+                closest_sink_vertex_id,
+                closest_sink_osm_id, 
+                min_distance
+            )
+    
+    # Map results back to all population points (including duplicates)
+    for idx, row in df_population.iterrows():
+        vertex_id = row['vertex_id']
+        closest_sink_vertex_id, closest_sink_osm_id, closest_sink_total_fft = vertex_to_closest_sink[vertex_id]
+        
+        df_population.at[idx, 'closest_sink_vertex_id'] = closest_sink_vertex_id
+        df_population.at[idx, 'closest_sink_osm_id'] = closest_sink_osm_id
+        df_population.at[idx, 'closest_sink_total_fft'] = closest_sink_total_fft
+    
+    return df_population
+
 
 
 def print_statistics_agriculture(df_agri: pd.DataFrame) -> None:
@@ -813,6 +885,10 @@ def main():
     df_factories['avg_access_time'], OD_baseline = calculate_average_access_time(df_factories, border_crossings, graph)
     print(f"Baseline average access time: {np.mean(OD_baseline):.2f} hours")
 
+    #summarize analysis if flag is set
+    if config.print_statistics == True:
+        print_statistics(df_factories, border_crossings, OD_baseline)
+
     #save results of analysis as .parquet files
     save_accessibilty_results(config, df_factories, border_crossings, "factories")
     print(f"Saved results to {config.Path_factory_accessibility}")
@@ -841,6 +917,10 @@ def main():
     #Calculate OD matrices by sink type
     print("Calculating OD matrices for agricultural areas to border crossings, ports and rail cargo stations...")
     df_agri = calculate_OD_matrix(df_agri, graph, Sinks_road, Sinks_port, Sinks_rail, all_sinks)
+
+    #summarize analysis if flag is set
+    if config.print_statistics == True:
+        print_statistics_agriculture(df_agri)
 
     #save results of analysis as .parquet files
     save_accessibilty_results(config, df_agri, all_sinks, "agriculture")

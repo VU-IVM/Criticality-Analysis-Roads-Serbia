@@ -67,13 +67,13 @@ def load_accessibility_results(config: NetworkConfig, facility_type) -> tuple[gp
 
 def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emergency_service) -> None:
 
-    fig, ax_curve = plt.subplots(1, 1, figsize=(8, 4))
+    fig, ax_curve = plt.subplots(1, 1, figsize=(5, 5))
 
 
     # Panel B: Calculate access curves
     None_INF_Pop_in_Zone_Sample = df_worldpop.copy()
     total_population = df_worldpop['population'].sum()
-    thresholds = np.arange(0, 6.1, 1/6)  
+    thresholds = np.arange(0, 3.1, 1/3) 
 
     percentage_population_within_threshold_2 = []
 
@@ -95,10 +95,13 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
 
     if emergency_service == "firefighters":
         ax_curve.set_xlabel('Access time to closest fire station (hours)', fontsize=12)
+        file_name = 'baseline_accessibility_fire_stations.png'
     elif emergency_service == "hospitals":
         ax_curve.set_xlabel('Access time to closest health care facility (hours)', fontsize=12)
+        file_name = 'baseline_accessibility_hospitals.png'
     elif emergency_service == "police":
         ax_curve.set_xlabel('Access time to closest police station (hours)', fontsize=12)
+        file_name = 'baseline_accessibility_police_stations.png'
     else:
         raise ValueError(
             f"Invalid emergency_service '{emergency_service}'. "
@@ -106,7 +109,7 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
         )
 
     ax_curve.set_ylabel('Population with access (%)', fontsize=12)
-    ax_curve.legend(fontsize=10)
+    ax_curve.legend(fontsize=12)
     ax_curve.minorticks_on()
     ax_curve.grid(which='both', linestyle='--', linewidth=0.5, alpha=0.7)
 
@@ -116,9 +119,9 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
     if threshold_100_2 is not None:
         ax_curve.axvline(x=threshold_100_2, color='#003049', linestyle='--', linewidth=1, alpha=0.7)
         ax_curve.plot(threshold_100_2, 100, 'o', color='#003049', markersize=6)
-        ax_curve.text(threshold_100_2, 94, f'{threshold_100_2:.1f}h', color='black', ha='left', fontsize=10)
+        ax_curve.text(threshold_100_2+0.05, 94, f'{threshold_100_2:.1f}h', color='black', ha='left', fontsize=12)
 
-    plt.savefig(config.figure_path / 'baseline_accessibility_fire_disruptions.png',dpi=150,transparent=True)
+    plt.savefig(config.figure_path / file_name,dpi=150,transparent=True)
 
 
     if config.show_figures == True:
@@ -185,8 +188,94 @@ def plot_access_times_factories(df_factories: pd.DataFrame, Sink: pd.DataFrame, 
     plt.show()
 
 
+def plot_accessibility_curves_agriculture(df_agri: pd.DataFrame, config: NetworkConfig) -> None:
+    # =============================================================================
+    # VISUALIZATION: Baseline Accessibility Curves - Road, Port, Rail (3x2)
+    # Top row: Nearest sink | Bottom row: Average to all sinks
+    # =============================================================================
+
+    fig, axes = plt.subplots(2, 3, figsize=(12, 8), sharey='row')
+
+    # Define thresholds (shared)
+    thresholds = np.arange(0, 8.1, 0.5)  # Extended range based on your data (up to ~5.8h)
+
+    # Total agricultural land
+    total_ual = df_agri['UAL'].sum()
+
+    # Sink types configuration
+    # Top row: nearest | Bottom row: avg
+    # text_offset: (x_offset, y_position) for the threshold label
+    sink_configs = [
+        # Top row - Nearest
+        {'ax': axes[0, 0], 'col': 'nearest_access_road', 'label': 'A', 'title': 'road border crossings', 
+        'metric': 'Nearest', 'show_ylabel': True, 'text_offset': (0.1, 94)},
+        {'ax': axes[0, 1], 'col': 'nearest_access_port', 'label': 'B', 'title': 'ports', 
+        'metric': 'Nearest', 'show_ylabel': False, 'text_offset': (0.1, 94)},
+        {'ax': axes[0, 2], 'col': 'nearest_access_rail', 'label': 'C', 'title': 'rail terminals', 
+        'metric': 'Nearest', 'show_ylabel': False, 'text_offset': (0.1, 94)},
+        
+        # Bottom row - Average
+        {'ax': axes[1, 0], 'col': 'avg_access_road', 'label': 'D', 'title': 'road border crossings', 
+        'metric': 'Avg.', 'show_ylabel': True, 'text_offset': (-1, 92)},
+        {'ax': axes[1, 1], 'col': 'avg_access_port', 'label': 'E', 'title': 'ports', 
+        'metric': 'Avg.', 'show_ylabel': False, 'text_offset': (-0.9, 94)},
+        {'ax': axes[1, 2], 'col': 'avg_access_rail', 'label': 'F', 'title': 'rail terminals', 
+        'metric': 'Avg.', 'show_ylabel': False, 'text_offset': (0.1, 94)},
+    ]
+
+    for config in sink_configs:
+        ax = config['ax']
+        col = config['col']
+        
+        # Calculate percentage of UAL within each threshold
+        percentage_ual = []
+        for threshold in thresholds:
+            ual_sum = df_agri.loc[df_agri[col] <= threshold, 'UAL'].sum()
+            ual_percentage = (ual_sum / total_ual) * 100
+            percentage_ual.append(ual_percentage)
+        
+        # Find 100% threshold
+        threshold_100 = next((threshold for i, threshold in enumerate(thresholds) 
+                            if percentage_ual[i] >= 99.9), None)
+        
+        # Plot
+        ax.plot(thresholds, percentage_ual, linestyle='-', 
+                color='#003049', linewidth=2, label='Normal condition')
+        ax.set_xlabel(f'{config["metric"]} access time to \n {config["title"]} (hours)', fontsize=11)
+        
+        # Only show y-axis label on first column
+        if config['show_ylabel']:
+            ax.set_ylabel('Agricultural land with access (%)', fontsize=11)
+        
+        ax.minorticks_on()
+        ax.grid(which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_aspect('auto', adjustable='box')
+        ax.set_ylim(0, 105)
+        ax.set_xlim(0, max(thresholds))
+        
+        # Add panel label
+        ax.text(0.05, 0.95, config['label'], transform=ax.transAxes, fontsize=16,
+                fontweight='bold', verticalalignment='top',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+        
+        if threshold_100 is not None:
+            x_offset, y_pos = config['text_offset']
+            ax.axvline(x=threshold_100, color='#003049', linestyle='--', linewidth=1, alpha=0.7)
+            ax.plot(threshold_100, 100, 'o', color='#003049', markersize=6)
+            ax.text(threshold_100 + x_offset, y_pos, f'{threshold_100:.1f}h', 
+                    color='black', ha='left', fontsize=14)
+
+    # Add shared legend to the last panel (bottom right)
+    axes[1, 2].legend(fontsize=12, loc='lower right')
+
+    # Final layout
+    plt.tight_layout()
+    plt.savefig(config.figure_path / 'baseline_accessibility_agri_road_port_rail_3x2.png', dpi=150, transparent=True)
+    plt.show()
+
+
 #move this function to plotting script
-def plot_access_time_agriculture(df_agri: pd.DataFrame, Sinks: pd.DataFrame, config: NetworkConfig) -> None:
+def plot_access_time_agriculture_map(df_agri: pd.DataFrame, Sinks: pd.DataFrame, config: NetworkConfig) -> None:
     """
     Create visualization of the average access times from agricultural areas to borders, ports and rail 
     
@@ -270,9 +359,9 @@ def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, conf
     Sink_fire = gpd.GeoDataFrame(Sink, geometry='geometry', crs="EPSG:4326").to_crs(3857)
 
     # Create bins for categories (1-hour intervals)
-    bins = [0, 0.25, 0.5, 1, 1.5, 2, float('inf')]
-    labels = ['0-15', '15-30', '30-60', '60-90', '90-120', '>120']
-    colors = ['#fff7f3', '#fde0dd', '#fcc5c0', '#fa9fb5', '#f768a1', '#c51b8a']
+    bins = [0, 0.25, 0.5, 1, float('inf')]
+    labels = ['0-15', '15-30', '30-60', '>60']
+    colors = ['#4cc9f0','#4895ef', '#4361ee', '#3f37c9', '#3a0ca3']
 
     # Assign categories
     df_worldpop_plot['category'] = pd.cut(df_worldpop_plot['closest_sink_total_fft'], 
@@ -289,7 +378,7 @@ def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, conf
     color_map['Not Accessible'] = '#bdbdbd'  # Gray color
 
     # Create figure
-    fig, ax = plt.subplots(figsize=(24, 14))
+    fig, ax = plt.subplots(figsize=(18, 12))
 
     # Plot by category
     for category, color in color_map.items():
@@ -333,15 +422,17 @@ def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, conf
 
     
     # Add legend
-    ax.legend(handles=legend_patches, 
-            loc='upper right',
-            fontsize=12,
-            title='Access Time',
-            title_fontsize=14,
-            frameon=True,
-            fancybox=True,
-            shadow=True,
-            framealpha=0.95)
+    legend  = ax.legend(handles=legend_patches, 
+          loc='upper right',
+          fontsize=12,
+          title='Access Time',
+          title_fontsize=14,
+          frameon=True,
+          fancybox=True,
+          shadow=True,
+          framealpha=0.95)
+
+    legend.get_title().set_fontweight('bold')
 
     plt.savefig(config.figure_path / file_name, dpi=200, bbox_inches='tight')
 
@@ -439,7 +530,7 @@ def main():
     # =============================================================================
     # 1. Plot accessibility results for factories
     # =============================================================================
-
+    """
     #Load results of acessibility analysis to factories to road borders
     print("Loading results of factory accessibility analysis...")
     df_factory_accessibility, df_factory_sinks = load_accessibility_results(config, "factories")
@@ -456,9 +547,12 @@ def main():
     print("Loading results of accessibility analysis of agricultural areas...")
     df_agriculture_accessibility, df_agriculture_sinks = load_accessibility_results(config, "agriculture")
 
-    #create map of the access times of factories to road border crossings
-    plot_access_time_agriculture(df_agriculture_accessibility, df_agriculture_sinks, config)
+    #plot baseline accessibility curves for agricultural areas (shortest and average to borders, rail terminals and ports)
+    plot_accessibility_curves_agriculture(df_agriculture_accessibility, config)
 
+    #create map of the access times of factories to road border crossings
+    plot_access_time_agriculture_map(df_agriculture_accessibility, df_agriculture_sinks, config)
+    """
     # =============================================================================
     # 3. Plot accessibility results for firefighters
     # =============================================================================
