@@ -35,7 +35,29 @@ warnings.simplefilter(action='ignore', category=RuntimeWarning) # exactextract g
 
 
 def load_accessibility_results(config: NetworkConfig, facility_type) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-        
+    """
+    Load accessibility analysis results and corresponding facility locations for a
+    specified facility type.
+
+    Parameters
+    ----------
+    config : NetworkConfig
+        Configuration object containing facility-specific input paths.
+    facility_type : str
+        One of {"firefighters", "hospitals", "police", "factories", "agriculture"}.
+
+    Returns
+    -------
+    tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]
+        (gdf, Sink) where `gdf` contains accessibility results and `Sink` contains
+        facility locations for the selected facility type.
+
+    Raises
+    ------
+    ValueError
+        If an unsupported facility_type is provided.
+    """
+
     if facility_type == "firefighters":
         gdf = gpd.read_parquet(config.Path_firefighter_accessibilty)
         Sink = gpd.read_parquet(config.Path_firefighters_sink)
@@ -66,6 +88,26 @@ def load_accessibility_results(config: NetworkConfig, facility_type) -> tuple[gp
 
 
 def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emergency_service) -> None:
+    """
+    Plot an accessibility curve showing the share of population that has acces to  
+    to the nearest emergency service within a given travel-time threshold, and save the PNG.
+
+    Parameters
+    ----------
+    df_worldpop : gpd.GeoDataFrame
+        Settlement data with location and population of the settlements within the study region
+        Must include 'closest_sink_total_fft' (hours to nearest facility) and 'population'.
+    config : NetworkConfig
+        Provides 'figure_path' for saving and 'show_figures' flag to optionally display.
+    emergency_service : str
+        One of {"firefighters", "hospitals", "police"}; sets x‑axis label and filename.
+
+    Behavior
+    --------
+    Computes cumulative population coverage across thresholds (0-3 h, step 20 min),
+    marks the threshold where 100% coverage is reached (if any), styles the plot,
+    and saves a transparent PNG to `config.figure_path`.
+    """
 
     fig, ax_curve = plt.subplots(1, 1, figsize=(5, 5))
 
@@ -130,13 +172,22 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
 
 def plot_access_times_factories(df_factories: pd.DataFrame, Sink: pd.DataFrame, config: NetworkConfig) -> None:
     """
-    Visualize the average access times for factories to reach all border crossings.
-    
-    Args:
-        df_factories: data frame with industrial centers in Serbia, Sink: border crossings, config
-        
-    Returns:
-        Nothing
+    Plot average access times from factories to border crossings and save the map.
+
+    Parameters
+    ----------
+    df_factories : GeoDataFrame
+        Factory locations with 'avg_access_time' and geometric coordinates.
+    Sink : GeoDataFrame or DataFrame
+        Border-crossing locations; converted to GeoDataFrame for plotting.
+    config : NetworkConfig
+        Provides output path (`figure_path`) and display settings.
+
+    Behavior
+    --------
+    Classifies factories into travel-time bands, colors them on a basemap, highlights
+    border crossings, adds a legend, and saves the figure as
+    'factory_access_avg.png'. Optionally displays the plot when enabled.
     """
 
     df_factories_plot = df_factories.to_crs(3857)
@@ -185,15 +236,30 @@ def plot_access_times_factories(df_factories: pd.DataFrame, Sink: pd.DataFrame, 
             framealpha=0.95)
 
     plt.savefig(config.figure_path / 'factory_access_avg.png', dpi=200, bbox_inches='tight')
-    plt.show()
+    if config.show_figures == True:
+        plt.show()
 
 
 def plot_accessibility_curves_agriculture(df_agri: pd.DataFrame, config: NetworkConfig) -> None:
-    # =============================================================================
-    # VISUALIZATION: Baseline Accessibility Curves - Road, Port, Rail (3x2)
-    # Top row: Nearest sink | Bottom row: Average to all sinks
-    # =============================================================================
+    """
+    Plot 3x2 accessibility curves for agricultural areas (road, port, rail; nearest vs. average)
+    and save the figure as a transparent PNG.
 
+    Parameters
+    ----------
+    df_agri : pd.DataFrame
+        Must include UAL (area/weight) and six time columns:
+        ['nearest_access_road','nearest_access_port','nearest_access_rail',
+        'avg_access_road','avg_access_port','avg_access_rail'] (hours).
+    config : NetworkConfig
+        Provides output path (`figure_path`) and `show_figures` flag.
+
+    Behavior
+    --------
+    For each sink/metric, computes cumulative % of UAL within thresholds (0-8 h, 0.5-h step),
+    marks the ~100% threshold if reached, adds panel labels (A-F), and saves
+    'baseline_accessibility_agri_road_port_rail_3x2.png'.
+    """
     fig, axes = plt.subplots(2, 3, figsize=(12, 8), sharey='row')
 
     # Define thresholds (shared)
@@ -223,9 +289,9 @@ def plot_accessibility_curves_agriculture(df_agri: pd.DataFrame, config: Network
         'metric': 'Avg.', 'show_ylabel': False, 'text_offset': (0.1, 94)},
     ]
 
-    for config in sink_configs:
-        ax = config['ax']
-        col = config['col']
+    for sink_config in sink_configs:
+        ax = sink_config['ax']
+        col = sink_config['col']
         
         # Calculate percentage of UAL within each threshold
         percentage_ual = []
@@ -241,10 +307,10 @@ def plot_accessibility_curves_agriculture(df_agri: pd.DataFrame, config: Network
         # Plot
         ax.plot(thresholds, percentage_ual, linestyle='-', 
                 color='#003049', linewidth=2, label='Normal condition')
-        ax.set_xlabel(f'{config["metric"]} access time to \n {config["title"]} (hours)', fontsize=11)
+        ax.set_xlabel(f'{sink_config["metric"]} access time to \n {sink_config["title"]} (hours)', fontsize=11)
         
         # Only show y-axis label on first column
-        if config['show_ylabel']:
+        if sink_config['show_ylabel']:
             ax.set_ylabel('Agricultural land with access (%)', fontsize=11)
         
         ax.minorticks_on()
@@ -254,12 +320,12 @@ def plot_accessibility_curves_agriculture(df_agri: pd.DataFrame, config: Network
         ax.set_xlim(0, max(thresholds))
         
         # Add panel label
-        ax.text(0.05, 0.95, config['label'], transform=ax.transAxes, fontsize=16,
+        ax.text(0.05, 0.95, sink_config['label'], transform=ax.transAxes, fontsize=16,
                 fontweight='bold', verticalalignment='top',
                 bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
         
         if threshold_100 is not None:
-            x_offset, y_pos = config['text_offset']
+            x_offset, y_pos = sink_config['text_offset']
             ax.axvline(x=threshold_100, color='#003049', linestyle='--', linewidth=1, alpha=0.7)
             ax.plot(threshold_100, 100, 'o', color='#003049', markersize=6)
             ax.text(threshold_100 + x_offset, y_pos, f'{threshold_100:.1f}h', 
@@ -271,19 +337,30 @@ def plot_accessibility_curves_agriculture(df_agri: pd.DataFrame, config: Network
     # Final layout
     plt.tight_layout()
     plt.savefig(config.figure_path / 'baseline_accessibility_agri_road_port_rail_3x2.png', dpi=150, transparent=True)
-    plt.show()
+    if config.show_figures == True:
+        plt.show()
 
 
-#move this function to plotting script
 def plot_access_time_agriculture_map(df_agri: pd.DataFrame, Sinks: pd.DataFrame, config: NetworkConfig) -> None:
     """
-    Create visualization of the average access times from agricultural areas to borders, ports and rail 
-    
-    Args:
-        Pandas DataFrame with agricultural areas, Pandas DataFrame with borders, ports and rail locations
-        
-    Returns:
-        Nothing
+    Plot three maps of average access time from agricultural areas to road border crossings,
+    ports, and rail terminals, and save the figure as a PNG.
+
+    Parameters
+    ----------
+    df_agri : pd.DataFrame or gpd.GeoDataFrame
+        Agricultural features with average access-time columns:
+        ['avg_access_road', 'avg_access_port', 'avg_access_rail'] (hours) and geometry.
+    Sinks : pd.DataFrame or gpd.GeoDataFrame
+        Locations of sinks with 'type' in {'road','port','rail'} and a 'geometry' column.
+    config : NetworkConfig
+        Provides output path (`figure_path`) and `show_figures` toggle.
+
+    Behavior
+    --------
+    Classifies access times into bands (1-2, 2-3, 3-4, 4-5, 5+ hours), renders three side-by-side
+    maps on a basemap, adds panel labels (A-C) and a shared legend, and saves
+    'agriculture_access_by_type.png'. Optionally displays the plot when enabled.
     """
     df_agri_plot = df_agri.to_crs(3857)
     Sinks_plot = gpd.GeoDataFrame(Sinks, geometry='geometry', crs="EPSG:4326").to_crs(3857)
@@ -348,13 +425,34 @@ def plot_access_time_agriculture_map(df_agri: pd.DataFrame, Sinks: pd.DataFrame,
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
     plt.savefig(config.figure_path / 'agriculture_access_by_type.png', dpi=200, bbox_inches='tight')
-    plt.show()
+    if config.show_figures == True:
+        plt.show()
 
 
 
 def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, config: NetworkConfig, emergency_service) -> gpd.GeoDataFrame:
+    """
+    Plot an access-time map for an emergency service and save the figure as a PNG.
+
+    Parameters
+    ----------
+    df_worldpop : gpd.GeoDataFrame
+        Settlement or population points with 'closest_sink_total_fft' (hours) and geometry.
+    Sink : pd.DataFrame or gpd.GeoDataFrame
+        Facility locations (fire, hospital, police) with a 'geometry' column.
+    config : NetworkConfig
+        Holds output directory (`figure_path`) and `show_figures` flag.
+    emergency_service : str
+        One of {"firefighters", "hospitals", "police"}; sets legend label and filename.
+
+    Behavior
+    --------
+    Classifies travel times into bands (0-15, 15-30, 30-60, >60 min), renders
+    population points colored by category, overlays facility markers, adds a styled
+    legend, saves the output map, and optionally displays it.
+    """
+    
     # Prepare data
-    #edges_gdf = gpd.GeoDataFrame(edges, geometry='geometry')
     df_worldpop_plot = gpd.GeoDataFrame(df_worldpop, geometry='geometry', crs="EPSG:4326").to_crs(3857)
     Sink_fire = gpd.GeoDataFrame(Sink, geometry='geometry', crs="EPSG:4326").to_crs(3857)
 
@@ -443,7 +541,27 @@ def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, conf
 
 
 
-def plot_accessibility_chart(df_worldpop_plot, config, emergency_service):
+def plot_accessibility_chart(df_worldpop_plot: gpd.GeoDataFrame, config: NetworkConfig, emergency_service) -> None:
+    """
+    Plot a horizontal bar chart (with inset pie) showing population distribution by
+    access-time category for an emergency service, and save the figure as a PNG.
+
+    Parameters
+    ----------
+    df_worldpop_plot : gpd.GeoDataFrame
+        Must contain 'population' and a categorical 'category' column with
+        labels like ['0-15','15-30','30-60','60-90','90-120','>120'].
+    config : NetworkConfig
+        Provides output directory (`figure_path`) and `show_figures` toggle.
+    emergency_service : str
+        One of {"firefighters","hospitals","police"}; sets y-axis label and filename.
+
+    Behavior
+    --------
+    Aggregates population (in millions) per category, renders a styled horizontal
+    bar chart (reversed order for readability) with a matching inset pie,
+    then saves a service-specific PNG to `figure_path` and optionally displays it.
+    """
 
     # Calculate total population per category
     pop_by_category = df_worldpop_plot.groupby('category')['population'].sum()/1e6
@@ -522,7 +640,11 @@ def plot_accessibility_chart(df_worldpop_plot, config, emergency_service):
 
 def main():
     """
-    Main function to orchestrate all accessibilty calculations.
+    Run the post-processing and visualization workflow for accessibility results.
+    Loads facility-specific outputs (factories, agriculture, firefighters, hospitals,
+    police) from configured paths, generates cumulative curves, maps, and summary
+    charts, and saves all figures to `config.figure_path`. Progress messages are
+    printed during execution; the function returns no value.
     """
     # Initialize configuration
     config = NetworkConfig()
@@ -530,7 +652,7 @@ def main():
     # =============================================================================
     # 1. Plot accessibility results for factories
     # =============================================================================
-    """
+    
     #Load results of acessibility analysis to factories to road borders
     print("Loading results of factory accessibility analysis...")
     df_factory_accessibility, df_factory_sinks = load_accessibility_results(config, "factories")
@@ -552,7 +674,7 @@ def main():
 
     #create map of the access times of factories to road border crossings
     plot_access_time_agriculture_map(df_agriculture_accessibility, df_agriculture_sinks, config)
-    """
+    
     # =============================================================================
     # 3. Plot accessibility results for firefighters
     # =============================================================================
@@ -604,7 +726,6 @@ def main():
 
     #Create a combined bar and pie chart to show the percentage of the population that fall in each access time category
     plot_accessibility_chart(df_worldpop_plot, config, "police")
-
 
 
 

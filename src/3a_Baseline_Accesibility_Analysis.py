@@ -116,13 +116,41 @@ def create_graph_for_spatial_matching(base_network: gpd.GeoDataFrame) -> tuple[p
 
     return nodes, graph
 
-def nearest_network_nodes(df_factories: gpd.GeoDataFrame, nodes: pd.DataFrame) -> pd.Series:
+def nearest_network_nodes(gdf_locations: gpd.GeoDataFrame, nodes: pd.DataFrame) -> pd.Series:
+    """
+    Assign the nearest network node to each input point geometry (e.g., factories,
+    agricultural areas or any other locations) using a spatial index.
+
+    Parameters
+    ----------
+    gdf_locations : gpd.GeoDataFrame
+        GeoDataFrame of point locations to snap to the network. Must contain:
+        - 'geometry' (Point): location of each feature.
+        Side effect: a new column 'vertex_id' is created/overwritten with the
+        nearest node identifier.
+    nodes : pd.DataFrame
+        Table of network nodes. Must contain:
+        - 'geometry' (Point): node coordinates (preferably as a GeoSeries/GeoDataFrame column).
+        - 'vertex_id' (hashable/int/str): unique node identifier.
+
+    Returns
+    -------
+    pd.Series
+        Series of nearest node identifiers (vertex_id), index-aligned with
+        df_factories, and also written to df_factories['vertex_id'].
+
+    Notes
+    -----
+    - Uses a shapely STRtree for efficient nearest-neighbor lookup.
+    - Ensure both inputs use the same coordinate reference system (CRS) before calling.
+    - If performance is critical for very large inputs, consider batching or pre-filtering.
+    """
 
     nodes_sindex = shapely.STRtree(nodes.geometry)
-    df_factories['vertex_id'] = df_factories.geometry.progress_apply(
+    gdf_locations['vertex_id'] = gdf_locations.geometry.progress_apply(
     lambda x: nodes.iloc[nodes_sindex.nearest(x)].vertex_id).values
 
-    return df_factories['vertex_id']
+    return gdf_locations['vertex_id']
 
 
 def load_border_crossings(config: NetworkConfig, nodes: pd.DataFrame) -> pd.DataFrame:
@@ -295,7 +323,6 @@ def load_agricultural_data(config: NetworkConfig) -> pd.DataFrame:
     Returns:
         Pandas DataFrame with agricultural areas
     """
-
 
     Path_AgriFile = config.data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
     DataFrame_Agri = pd.read_excel(Path_AgriFile)
@@ -665,6 +692,44 @@ def get_distance_to_nearest_facility(df_population: gpd.GeoDataFrame, Sink: pd.D
 
 
 def save_accessibilty_results(config: NetworkConfig, df_worldpop, Sink, facility_type) -> None:
+    """
+    Save accessibility results and sink geometries to facility-specific Parquet files.
+
+    This function routes outputs to different paths based on `facility_type` parameter in "config". It writes:
+    1) `df_worldpop` (results of the accessibility analysis) to a facility-specific
+    Parquet path, and
+    2) `Sink` (point/geometry features of the facility type) as a GeoDataFrame to the corresponding sink path.
+
+    Parameters
+    ----------
+    config : NetworkConfig
+        Configuration object providing output paths:
+        - Path_firefighter_accessibilty, Path_firefighters_sink
+        - Path_hospital_accessibilty,   Path_hospital_sink
+        - Path_police_accessibilty,     Path_police_sink
+        - Path_factory_accessibility,   Path_factory_sink
+        - Path_agriculture_accessibility, Path_agriculture_sink
+    df_worldpop : pandas.DataFrame or gpd.GeoDataFrame
+        Accessibility results containing the access times of each settlement to a specific facility type.
+    Sink : array-like of shapely.geometry or gpd.GeoDataFrame
+        Locations of the facilities of this type (e.g. hospitals).
+        Will be converted to a GeoDataFrame before saving.
+    facility_type : str
+        Target facility category; must be one of:
+        {"firefighters", "hospitals", "police", "factories", "agriculture"}.
+
+    Returns
+    -------
+    None
+        Writes two Parquet files (results and sink geometries) to the paths resolved
+        from `config` for the selected `facility_type`.
+
+    Raises
+    ------
+    ValueError
+        If `facility_type` is not one of the supported categories.
+    """
+
 
     if facility_type == "firefighters":
         df_worldpop.to_parquet(config.Path_firefighter_accessibilty)
@@ -695,7 +760,60 @@ def save_accessibilty_results(config: NetworkConfig, df_worldpop, Sink, facility
 
 
 def print_statistics_emergency_accessibility(df_worldpop_fire=None, Sink_fire=None, df_worldpop_hospital=None, Sink_hospitals=None, df_worldpop_police=None, Sink_police=None):
+    """
+    Print accessibility statistics for emergency services (fire, hospitals, police).
 
+    This function writes formatted summaries to stdout for each service provided,
+    including access-time stats, category distributions, population coverage (if
+    population is available), comparison tables across services, and key coverage
+    thresholds (≤15/30/60 minutes). All inputs are optional; only services with both
+    a results table and corresponding sinks are analyzed.
+
+    Parameters
+    ----------
+    df_worldpop_fire : pandas.DataFrame or gpd.GeoDataFrame, optional
+        Settlements/centroids with travel-time results to the nearest fire department.
+        Must contain:
+        - 'closest_sink_total_fft' (float, hours): travel time to nearest facility.
+        - Optional population column: one of ['population', 'pop', 'worldpop',
+        'pop_sum', 'population_sum'] for population-weighted stats.
+    Sink_fire : gpd.GeoDataFrame or array-like of shapely geometries, optional
+        Fire department locations; only the length is used for counts.
+    df_worldpop_hospital : pandas.DataFrame or gpd.GeoDataFrame, optional
+        As above, for hospitals (same column requirements).
+    Sink_hospitals : gpd.GeoDataFrame or array-like of shapely geometries, optional
+        Hospital locations.
+    df_worldpop_police : pandas.DataFrame or gpd.GeoDataFrame, optional
+        As above, for police stations (same column requirements).
+    Sink_police : gpd.GeoDataFrame or array-like of shapely geometries, optional
+        Police station locations.
+
+    Behavior
+    --------
+    - Bins access times (in hours) into categories: 0–15, 15–30, 30–60, 60–90,
+    90–120, >120 minutes; missing/invalid are labeled 'Not Accessible'.
+    - Prints, per service:
+    * facility and settlement counts,
+    * access-time summary (mean/median/std/min/max, in minutes),
+    * distribution by access-time category (counts and shares),
+    * population coverage by category + population-weighted mean access time
+        (if a population column exists),
+    * key coverage thresholds (≤15/30/60 minutes, Not Accessible).
+    - Prints comparison tables across all provided services for settlement coverage
+    and, when population is available, population coverage.
+
+    Returns
+    -------
+    None
+        Side effect only: prints formatted summaries and comparison tables to stdout.
+
+    Notes
+    -----
+    - Expects 'closest_sink_total_fft' in hours; the function converts to minutes
+    for printing. Ensure consistent CRS and travel-time computation upstream.
+    - Population-weighted statistics are computed only if a recognized population
+    column is present.
+    """
         
     # Define bins and labels
     bins = [0, 0.25, 0.5, 1, 1.5, 2, float('inf')]
@@ -851,9 +969,20 @@ def print_statistics_emergency_accessibility(df_worldpop_fire=None, Sink_fire=No
 
 
 def main():
+    
     """
-    Main function to orchestrate all accessibilty calculations.
+    Run the full multi-sector accessibility analysis that investigates access times for:
+    - factories to land borders
+    - agricultural areas to land borders, inland ports and cargo railway terminals
+    - settlements to firefighters, hospitals and police stations
+    Workflod: load the road network, map all facility or area locations to the nearest node 
+    in the road network and compute Origin-Destination-matrix-based
+    accessibility to relevant sinks (factories, agriculture, emergency services),
+    save all results to facility-specific Parquet files, and print summary
+    statistics when enabled.
+    The results of this analysis are visualized in script 3b_plot_figures.py
     """
+
     # Initialize configuration
     config = NetworkConfig()
     

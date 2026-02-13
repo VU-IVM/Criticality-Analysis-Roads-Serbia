@@ -1,7 +1,3 @@
-# Converted from 4_Hazard_maps.ipynb
-
-
-# ===== Cell 1 =====
 import warnings
 import xarray as xr
 import numpy as np
@@ -471,8 +467,13 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
 
 def main():
     """
-    Main function to orchestrate all accessibilty calculations.
+    Generates geospatial visualizations of flood, snowdrift and landslide hazard
+    datasets for the report. The function loads the datasets and retrieves
+    country boundary geometries, prepares each hazard layer for plotting, and
+    saves PNGs to the to the paths defined in the configuration.
+    No values are returned.
     """
+
     # Initialize configuration
     config = NetworkConfig()
 
