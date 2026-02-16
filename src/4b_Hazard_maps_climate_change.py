@@ -283,7 +283,8 @@ def plot_basins(basins_3035, config):
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
     plt.savefig(config.figure_path / "Change in return period.png", dpi=300, bbox_inches="tight")
     basins_3857.to_parquet(config.intermediate_results_path / "Future Floods change in RP.parquet")
-    plt.show()
+    if config.show_figures:
+        plt.show()
 
 
 def plot_effect_on_roads(roads, roads_rp, config):
@@ -381,7 +382,8 @@ def plot_effect_on_roads(roads, roads_rp, config):
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
     plt.savefig(config.figure_path / "Change in return period experienced by roads.png", dpi=300, bbox_inches="tight")
     roads_rp.to_parquet(config.intermediate_results_path / "Future Floods change in RP experienced by roads.parquet")
-    plt.show()
+    if config.show_figures:
+        plt.show()
 
 
 def max_raster_along_line(line, raster, transform):
@@ -778,7 +780,8 @@ def plot_precipitation_climate_change(results, config):
 
 
     plt.savefig(config.figure_path / "change in Rx1d.png", dpi=300, bbox_inches="tight")
-    plt.show()
+    if config.show_figures:
+        plt.show()
 
 
 def main():
