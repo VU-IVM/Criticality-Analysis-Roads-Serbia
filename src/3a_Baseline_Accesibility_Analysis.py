@@ -969,7 +969,6 @@ def print_statistics_emergency_accessibility(df_worldpop_fire=None, Sink_fire=No
 
 
 def main():
-    
     """
     Run the full multi-sector accessibility analysis that investigates access times for:
     - factories to land borders
