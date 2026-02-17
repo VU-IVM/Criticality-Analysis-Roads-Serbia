@@ -23,6 +23,7 @@ import networkx as nx
 from rasterio.enums import Resampling
 from exactextract import exact_extract
 import matplotlib.patches as mpatches
+from typing import Any
 
 import matplotlib.pyplot as plt
 import contextily as cx
@@ -34,7 +35,21 @@ from matplotlib.patches import Patch
 from config.network_config import NetworkConfig
 
 
-def load_basin_data(config):
+def load_basin_data(config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Load basin-level flood statistics and merge them with the full Hybas basin
+    geometries to produce a complete GeoDataFrame.
+
+    Parameters
+    ----------
+    config : NetworkConfig
+        Provides paths to the flood scenario CSV and the Hybas basin shapefile.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Basins enriched with flood statistics and associated polygon geometries.
+    """
 
     basins = pd.read_csv(config.intermediate_results_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv")
 
@@ -44,7 +59,23 @@ def load_basin_data(config):
     return basins
 
 
-def plot_basins(basins, config):
+def plot_basins(basins: gpd.GeoDataFrame, config: NetworkConfig) -> None:
+    """
+    Plot basin-level mean water depth classes on a map and save the resulting figure.
+
+    Parameters
+    ----------
+    basins : gpd.GeoDataFrame
+        Basin polygons with a 'mean water depth (m)' column used for classifying depth.
+    config : NetworkConfig
+        Provides output path (`figure_path`) and a flag (`show_figures`) for display.
+
+    Behavior
+    --------
+    Bins basins into depth classes, renders each class with a distinct blue color,
+    adds a basemap and a custom legend, annotates summary statistics, and saves
+    'basin_water_depths.png' to the configured directory.
+    """
 
     # Define bins for water depth data based on the histogram distribution
     # Most basins are shallow (0-2m), with decreasing frequency toward deeper waters
@@ -130,7 +161,28 @@ def plot_basins(basins, config):
         plt.show()
 
 
-def load_road_network(config):
+def load_road_network(config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Load the preprocessed road network for Serbia and extract the giant connected
+    component as a GeoDataFrame suitable for routing and accessibility analysis.
+
+    Parameters
+    ----------
+    config : NetworkConfig
+        Supplies the file path to the Parquet road network dataset.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Road network reprojected to EPSG:3857 and filtered to include only edges
+        belonging to the giant connected component of the underlying igraph graph.
+
+    Notes
+    -----
+    Creates an igraph representation internally to isolate the largest connected
+    subnetwork before returning the corresponding GeoDataFrame.
+    """
+
     base_network = gpd.read_parquet(config.data_path / "base_network_SRB_basins.parquet")
 
     edges = base_network.reindex(['from_id','to_id'] + [x for x in list(base_network.columns) if x not in ['from_id','to_id']],axis=1)
@@ -142,9 +194,32 @@ def load_road_network(config):
 
     base_network = base_network.to_crs(3857)
 
-    return base_network, edges
+    return base_network
 
-def calculate_hospital_accessibility(base_network, config):
+def calculate_hospital_accessibility(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Calculate hospital-related road criticality by identifying road segments where
+    disruption scenarios increase travel times from settlements to hospitals.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Road network containing 'osm_id', endpoints, geometry, and attributes.
+    config : NetworkConfig
+        Provides paths to hospital disruption result files (pickled dictionaries).
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Road segments with ≥10-minute increased travel time, reprojected to EPSG:3857
+        and categorized into impact classes (10-20, 20-30, 30-40, 40-60, 60+ minutes).
+
+    Notes
+    -----
+    Loads basin-level scenario outcomes, extracts removed edges, computes mean positive
+    travel-time impacts, cleans infinite values, filters negligible impacts, and assigns
+    each exposed edge to a delay class.
+    """
 
     hospital_results_path = config.accessibility_analysis_path / "healthcare_criticality_results" / "save_new_results_SRB_basins.pkl"
     hospital_basins = config.accessibility_analysis_path / "healthcare_criticality_results" / "unique_scenarios_SRB_basins.pkl"
@@ -199,7 +274,30 @@ def calculate_hospital_accessibility(base_network, config):
     return exposed_edges_filtered
 
 
-def plot_road_criticality_hospital_access(base_network, exposed_edges_filtered, config):
+def plot_road_criticality_hospital_access(base_network: gpd.GeoDataFrame, exposed_edges_filtered: gpd.GeoDataFrame, config: NetworkConfig) -> None:
+    """
+    Compute hospital-related accessibility impacts by identifying road segments
+    whose travel times increase under simulated disruption scenarios.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Road network containing 'osm_id', 'from_id', 'to_id', and geometries.
+    config : NetworkConfig
+        Provides paths to stored hospital disruption results (pickle files).
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Road segments with ≥10-minute travel-time increases, classified into
+        impact bins (10-20, 20-30, 30-40, 40-60, 60+ minutes), reprojected to EPSG:3857.
+
+    Notes
+    -----
+    Loads per-basin disruption results, extracts affected edges, computes mean
+    travel-time impact per basin, cleans infinities, and filters out negligible
+    (<10 min) changes.
+    """
 
     # Create figure with high DPI for crisp visuals
     fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor='white')
@@ -279,7 +377,30 @@ def plot_road_criticality_hospital_access(base_network, exposed_edges_filtered, 
 
 
 
-def calculate_police_accessibility(base_network, config):
+def calculate_police_accessibility(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Calculate police-related road criticality by identifying road segments where
+    disruptions increase travel times from settlements to police stations.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Road network with 'osm_id', endpoints, geometry, and related attributes.
+    config : NetworkConfig
+        Provides paths to police disruption result files (pickled scenario outputs).
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Road segments with ≥10-minute increased travel time, reprojected to EPSG:3857
+        and containing a 'travel_time_impact' column.
+
+    Notes
+    -----
+    Loads basin-level scenario results, extracts removed edges, computes average
+    positive travel-time increases, cleans infinite values, and filters out
+    negligible (<10 min) impacts before returning exposed segments.
+    """
 
     police_results_path = config.accessibility_analysis_path / "police_criticality_results" / "save_new_results_SRB_basins.pkl"
     police_basins = config.accessibility_analysis_path / "police_criticality_results" / "unique_scenarios_SRB_basins.pkl"
@@ -321,7 +442,30 @@ def calculate_police_accessibility(base_network, config):
     return exposed_edges_filtered
 
 
-def plot_road_criticality_map_emergency_service(exposed_edges_filtered, base_network, config, emergency_service):
+def plot_road_criticality_map_emergency_service(exposed_edges_filtered: gpd.GeoDataFrame, base_network: gpd.GeoDataFrame, config: NetworkConfig, emergency_service: Any) -> None:
+    """
+    Calculate police-related accessibility impacts by identifying road segments
+    that experience increased travel times under simulated disruption scenarios.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Road network with 'osm_id', 'from_id', 'to_id', attributes, and geometry.
+    config : NetworkConfig
+        Provides paths to stored police disruption results (pickled dictionaries).
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Road edges with ≥10-minute travel-time increases, reprojected to EPSG:3857
+        and containing the computed 'travel_time_impact' for each exposed segment.
+
+    Notes
+    -----
+    Loads basin-level disruption outputs, extracts affected edges, computes mean
+    travel-time penalties, replaces infinite values, and filters out negligible
+    (<10 min) impacts.
+    """
 
     #select file name based on emergency service
     if emergency_service == "firefighters":
@@ -430,7 +574,33 @@ def plot_road_criticality_map_emergency_service(exposed_edges_filtered, base_net
     if config.show_figures:
         plt.show()
 
-def calculate_firefigher_accessibility(base_network, config):
+
+
+def calculate_firefigher_accessibility(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Compute firefighter-related accessibility impacts by identifying road segments
+    where disruption scenarios cause increased travel times.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Road network edges with 'osm_id', 'from_id', 'to_id', attributes, and geometry.
+    config : NetworkConfig
+        Contains paths to pickled firefighter disruption outputs (per-basin results).
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Road segments with ≥10-minute travel-time increases, reprojected to EPSG:3857
+        and including the computed 'travel_time_impact' for each affected edge.
+
+    Notes
+    -----
+    Loads basin-level scenario results, extracts removed edges, averages positive
+    travel-time deltas, replaces infinite values, and filters out negligible (<10 min)
+    impacts before returning the exposed subset.
+    """
+
     fire_results_path = config.accessibility_analysis_path / "fire_criticality_results" / "save_new_results_SRB_basins.pkl"
     fire_basins = config.accessibility_analysis_path / "fire_criticality_results" / "unique_scenarios_SRB_basins.pkl"
 
@@ -471,7 +641,31 @@ def calculate_firefigher_accessibility(base_network, config):
     return exposed_edges_filtered
 
 
-def calculate_criticality_factory_access(base_network, config):
+def calculate_criticality_factory_access(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Compute factory-related accessibility impacts by identifying road segments where
+    travel times from industrial areas to road border crossings increase under
+    disruption scenarios that remove critical edges.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Road network containing 'osm_id', 'from_id', 'to_id', geometry, and attributes.
+    config : NetworkConfig
+        Provides file paths to stored factory disruption results (pickled dictionaries).
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Factory-exposed road segments showing ≥10-minute travel-time increases,
+        with cleaned 'travel_time_impact' values and CRS set to EPSG:3857.
+
+    Notes
+    -----
+    Processes basin-level scenario outputs, filters valid DataFrame outcomes,
+    averages positive travel-time deltas, cleans infinite values, and retains only
+    edges with meaningful (>0.167 h) impacts.
+    """
     factory_results_path = config.accessibility_analysis_path / "factory_criticality_results" / "save_new_results_SRB_basins.pkl"
     factory_basins = config.accessibility_analysis_path / "factory_criticality_results" / "unique_scenarios_SRB_basins.pkl"
 
@@ -513,8 +707,26 @@ def calculate_criticality_factory_access(base_network, config):
     return factory_exposed_edges
 
 
-def plot_road_criticality_factories(factory_exposed_edges, base_network, config):
+def plot_road_criticality_factories(factory_exposed_edges: gpd.GeoDataFrame, base_network: gpd.GeoDataFrame, config: NetworkConfig) -> None:
+    """
+    Plot road segments whose travel times from industrial areas to road border
+    crossings increase under disruption scenarios, and save the resulting map.
 
+    Parameters
+    ----------
+    factory_exposed_edges : gpd.GeoDataFrame
+        Roads with computed 'travel_time_impact' values for factory accessibility.
+    base_network : gpd.GeoDataFrame
+        Full road network used as a muted background layer.
+    config : NetworkConfig
+        Provides output path (`figure_path`) and `show_figures` toggle.
+
+    Behavior
+    --------
+    Bins travel-time delays into impact classes, draws affected segments with
+    category-specific colors and widths, overlays a basemap, adds a custom legend,
+    and saves 'factory_criticality.png' to the configured directory.
+    """
     # Define bins for travel time impact - 10-minute increments, ignoring <10 min
     # 0.167 hrs = 10 min, 0.333 hrs = 20 min, 0.5 hrs = 30 min, 0.667 hrs = 40 min, 1.0 hrs = 60 min
     bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
@@ -605,10 +817,35 @@ def plot_road_criticality_factories(factory_exposed_edges, base_network, config)
         plt.show()
 
 
-def calculate_road_criticality_agriculture(base_network, config):
+def calculate_road_criticality_agriculture(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> dict:
+    """
+    Calculate road-network criticality for agricultural accessibility by identifying
+    segments where disruptions significantly increase travel times to road borders,
+    ports, or rail terminals.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Complete road network with OSM IDs, attributes, and geometries.
+    config : NetworkConfig
+        Provides paths to agricultural disruption results (pickled dictionaries).
+
+    Returns
+    -------
+    dict
+        A dictionary with keys {'road','port','rail'}, each containing a
+        GeoDataFrame of exposed edges with ≥10-minute travel-time increases and
+        an assigned impact class, or None if no affected edges were found.
+
+    Notes
+    -----
+    Loads basin-level scenario outcomes, filters valid results, computes mean
+    positive delays per sink type, extracts removed edges from the network, cleans
+    infinite values, filters minor impacts, classifies delays into bins, and returns
+    results grouped by sink type.
+    """
 
     TheFolder = config.accessibility_analysis_path / "allagri_criticality_results"
-    print(TheFolder)
 
     # Load results
     results_path = Path(TheFolder) / "save_new_results_SRB_basins.pkl"
@@ -730,37 +967,7 @@ def calculate_road_criticality_agriculture(base_network, config):
     # VISUALIZATION: Travel Time Impact by Sink Type (3x1 Grid)
     # =============================================================================
 
-    TheFolder = config.accessibility_analysis_path / "allagri_criticality_results"
-
-    # Load results
-    results_path = Path(TheFolder) / "save_new_results_SRB_basins.pkl"
-    basins_path = Path(TheFolder) / "unique_scenarios_SRB_basins.pkl"
-
-    with open(results_path, 'rb') as file:
-        save_new_results = pickle.load(file)
-
-    with open(basins_path, 'rb') as file:
-        unique_scenarios = pickle.load(file)
-
-    pd.options.mode.chained_assignment = None
-    pd.set_option('future.no_silent_downcasting', True)
-
-    river_basins = list(save_new_results.keys())
-
-    # Sink types to visualize (excluding 'all')
-    sink_types = ['road', 'port', 'rail']
-    
-
-    # Define visualization parameters
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-
-
-    # =============================================================================
     # Create exposed edges GeoDataFrame for each sink type
-    # =============================================================================
-
     exposed_edges_by_type = {}
 
     for sink_type in sink_types:
@@ -849,7 +1056,31 @@ def calculate_road_criticality_agriculture(base_network, config):
 # Create 3x1 figure
 # =============================================================================
 
-def plot_panel(ax, gdf, letter, title, base_network):
+def plot_panel(ax: Any, gdf: gpd.GeoDataFrame, letter: Any, title: Any, base_network: gpd.GeoDataFrame) -> Any:
+    """
+    Plot a single panel of agricultural road-criticality results by drawing exposed
+    road segments colored and weighted by travel-time impact, on top of a muted
+    baseline road network.
+
+    Parameters
+    ----------
+    ax : matplotlib Axes
+        Target axes object to draw the panel.
+    gdf : gpd.GeoDataFrame or None
+        Exposed edges with an 'impact_class' column; skipped if None or empty.
+    letter : str
+        Panel label (e.g., 'A', 'B', 'C') drawn in the upper left.
+    title : str
+        (Optional) Panel title; currently unused but available for consistency.
+    base_network : gpd.GeoDataFrame
+        Background road network rendered in light grey.
+
+    Behavior
+    --------
+    Plots the baseline network, overlays exposed edges by impact class with
+    category-specific colors and widths, adds a panel label, hides axes, and
+    adds a CartoDB Positron basemap.
+    """
     # Plot baseline network first (background)
     base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
 
@@ -887,7 +1118,27 @@ def plot_panel(ax, gdf, letter, title, base_network):
     cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, attribution=False)
 
 
-def plot_agriculture_average_increased_travel_time(exposed_edges_by_type, base_network, config):
+def plot_agriculture_average_increased_travel_time(exposed_edges_by_type: gpd.GeoDataFrame, base_network: gpd.GeoDataFrame, config: NetworkConfig) -> None:
+    """
+    Plot three side-by-side panels showing average increased travel time from
+    agricultural areas to road border crossings, ports, and rail terminals.
+
+    Parameters
+    ----------
+    exposed_edges_by_type : dict
+        Dictionary containing GeoDataFrames of exposed edges for keys 'road',
+        'port', and 'rail', each with an 'impact_class' column.
+    base_network : gpd.GeoDataFrame
+        Full road network drawn as a light background layer.
+    config : NetworkConfig
+        Provides output directory (`figure_path`) and display settings.
+
+    Behavior
+    --------
+    Uses `plot_panel` to render each sink type in a 3*1 layout, adds a shared legend
+    for delay classes, saves the figure as 'SRB_agri_criticality_avg_3x1.png',
+    and optionally displays it.
+    """
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 7))
 
@@ -938,7 +1189,30 @@ def plot_agriculture_average_increased_travel_time(exposed_edges_by_type, base_n
 
 
 
-def plot_agriculture_increased_travel_time_to_nearest(base_network, config):
+def plot_agriculture_increased_travel_time_to_nearest(base_network: gpd.GeoDataFrame, config:NetworkConfig) -> None:
+    """
+    Plot increased travel times from agricultural areas to the *nearest* road border
+    crossings, ports, and rail terminals, and save the resulting 3-panel figure.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Complete road network drawn in the background of each panel.
+    config : NetworkConfig
+        Provides paths to disruption-result pickle files and output figure directory.
+
+    Returns
+    -------
+    None
+        Outputs 'SRB_agri_criticality_nearest_3x1.png' and optionally displays it.
+
+    Behavior
+    --------
+    Loads per-basin disruption outcomes, computes mean positive delays for the
+    nearest sink type (road/port/rail), extracts affected edges, filters <10-min
+    impacts, assigns delay classes, renders a 3x1 map layout, adds a shared legend,
+    and saves the final figure.
+    """
     # =============================================================================
     # VISUALIZATION: Travel Time Impact by Sink Type (3x1 Grid)
     # =============================================================================
@@ -1070,7 +1344,7 @@ def plot_agriculture_increased_travel_time_to_nearest(base_network, config):
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 7))
 
-    def plot_panel(ax, gdf, letter, title):
+    def plot_panel(ax: Any, gdf: gpd.GeoDataFrame, letter: Any, title: Any):
         # Plot baseline network first (background)
         base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
         
@@ -1129,7 +1403,26 @@ def plot_agriculture_increased_travel_time_to_nearest(base_network, config):
         plt.show()
 
 
-def plot_and_save_combined_results(base_network, config):
+def plot_and_save_combined_results(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> None:
+    """
+    Generate a combined 2x2 criticality map for hospitals, factories, police, and
+    fire stations, and compute summary statistics for each service.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Complete road network plotted as a background layer in all panels.
+    config : NetworkConfig
+        Provides paths to criticality result files, output locations for figures
+        and parquet exports, and display settings.
+
+    Behavior
+    --------
+    Loads disruption outputs for four services, extracts and classifies road
+    segments with ≥10-minute travel-time increases, plots them in a 2x2 layout with
+    a shared legend, saves 'criticality_2x2.png', exports impact tables to Parquet,
+    and computes key metrics (mean delay, median delay, class shares, total km).
+    """
     # ============================
     # 3. Common settings
     # ============================
@@ -1256,13 +1549,6 @@ def plot_and_save_combined_results(base_network, config):
         plt.show()
 
 
-
-    # Uses already prepared GeoDataFrames:
-    #   hospital_exposed_edges, factory_exposed_edges, police_exposed_edges, fire_exposed_edges
-    # Each has 'travel_time_impact' in hours, 'impact_class' with labels
-    #   ['10-20 min','20-30 min','30-40 min','40-60 min','60+ min'], and LineString geometries in EPSG 3857.
-
-
     # Helper to compute a few compact facts per panel
     def panel_facts(gdf):
         if gdf is None or len(gdf) == 0:
@@ -1335,38 +1621,52 @@ def plot_and_save_combined_results(base_network, config):
 
 
 def main():
-    #Load configureation from NetworkConfig class including file paths, and flags
+    """
+    Run the road-network criticality analysis for flood disruption scenarios,
+    evaluating how unpassable road segments affect accessibility across
+    multiple sectors. The workflow assesses access from settlements to emergency
+    services (hospitals, firefighters, police), and access from industrial areas
+    to road border crossings as well as from agricultural areas to borders, ports,
+    and rail terminals. All results are visualized in a series of maps saved to
+    the directory defined in `config.figure_path`, with optional on-screen display.
+    The analysis also produces a combined multi-service criticality figure to
+    summarize the most affected parts of the network.
+    """
+
+    # 0) Initialize configuration (paths, flags, environment)
     config = NetworkConfig()
 
+    # 1) Load and visualize basin depth classes
     basins = load_basin_data(config)
-
     plot_basins(basins, config)
 
-    base_network, edges = load_road_network(config)
+    # 2) Load the road network (largest connected component, reprojected)
+    base_network = load_road_network(config)
 
+    # 3) Emergency services — compute and plot increased access times for settlements to emergency services 
+    # (hospitals, police, firefighers) for each road section
     road_criticality_hospitals = calculate_hospital_accessibility(base_network, config)
-
     plot_road_criticality_map_emergency_service(road_criticality_hospitals, base_network, config, "hospitals")
 
     road_criticality_police = calculate_police_accessibility(base_network, config)
-
     plot_road_criticality_map_emergency_service(road_criticality_police, base_network, config, "police")
 
     road_criticality_firefighters = calculate_firefigher_accessibility(base_network, config)
-
     plot_road_criticality_map_emergency_service(road_criticality_firefighters, base_network, config, "firefighters")
 
+    # 4) Economic sectors — compute/plot factory and agriculture criticality
+    #Factories: average increased travel time from industrial areas to borders
     road_criticality_factories = calculate_criticality_factory_access(base_network, config)
-
     plot_road_criticality_factories(road_criticality_factories, base_network, config)
 
+    # Agriculture: average increased time to all sinks and to nearest sink by type (borders, ports, rail terminals)
     road_criticality_agriculture = calculate_road_criticality_agriculture(base_network, config)
-
     plot_agriculture_average_increased_travel_time(road_criticality_agriculture, base_network, config)
-
     plot_agriculture_increased_travel_time_to_nearest(base_network, config)
 
+    # 5) Synthesis — combined 2×2 figure (hospitals, factories, police, fire stations)
     plot_and_save_combined_results(base_network, config)
+
 
 
 if __name__ == "__main__":

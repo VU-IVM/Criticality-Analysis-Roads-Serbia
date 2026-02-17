@@ -32,10 +32,12 @@ from matplotlib.patches import Patch, Rectangle
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from config.network_config import NetworkConfig
+
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
-from config.network_config import NetworkConfig
+
 
 
 def load_data(config: NetworkConfig) -> Tuple[gpd.GeoDataFrame, xr.Dataset]:
