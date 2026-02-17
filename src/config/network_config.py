@@ -11,6 +11,7 @@ class NetworkConfig:
     BASE_DIR = Path(__file__).resolve().parent.parent.parent  
     data_path = BASE_DIR / "input_files"
     intermediate_results_path = BASE_DIR / 'intermediate_results'
+    accessibility_analysis_path = BASE_DIR / 'accessibility_analysis'
     Path_RoadNetwork = data_path / "base_network_SRB_basins.parquet"
     Path_FactoryFile = data_path / "2_Factory_Company_geolocations.xlsx"
     path_to_Borders = data_path / "Borders_geocoded.xlsx"
