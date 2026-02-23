@@ -61,3 +61,18 @@ cd <repository-folder>
 conda env create -f environment.yml
 # Activate the environment
 conda activate <environment-name>
+
+---
+
+##Data
+The input data (hazard maps, road networks, exposure layers, etc.) is **not included** in this repository.
+
+---
+##Authors
+- **Elco Koks**
+- **Joël De Plaen**
+- **Valentin Weiwad**
+---
+##License
+
+This project is licensed under the terms of the [License](LICENSE) file.
