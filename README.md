@@ -1,4 +1,5 @@
 # Road Network Criticality & Accessibility Analysis
+
 A collection of Python scripts and Jupyter Notebooks designed to assess the **criticality** of road network segments and evaluate **population accessibility** to emergency services.  
 Originally developed for the **Republic of Serbia**, the workflow is fully transferable to other national road networks.
 
@@ -58,20 +59,22 @@ criticality-analysis/
 git clone <this-repository>
 cd <repository-folder>
 ```
-# Create the environment from environment.yml
-1. Install `mamba` in your base conda environment:
+
+## Create the environment from environment.yml
+
+### 1. Install `mamba` in your base conda environment:
 
 ```bash
 conda install -n base -c conda-forge mamba
 ```
 
-2. Create the project environment from `environment.yml`:
+### 2. Create the project environment from `environment.yml`:
 
 ```bash
 mamba env create -f environment.yml
 ```
 
-3. Activate the new environment:
+### 3. Activate the new environment:
 
 ```bash
 conda activate criticality_env
@@ -82,14 +85,18 @@ If the environment name changes in `environment.yml`, activate with that name in
 ---
 
 ## Data
+
 The input data (hazard maps, road networks, exposure layers, etc.) is **not included** in this repository.
 
 ---
 ## Authors
+
 - **Elco Koks**
 - **Joël De Plaen**
 - **Valentin Weiwad**
+
 ---
+
 ## License
 
 This project is licensed under the terms of the [License](LICENSE) file.
