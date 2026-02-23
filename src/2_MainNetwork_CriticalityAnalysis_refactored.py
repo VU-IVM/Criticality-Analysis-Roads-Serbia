@@ -30,7 +30,7 @@ from tqdm import tqdm
 
 # ArcGIS (optional)
 try:
-    import arcpy
+    import arcpy # type: ignore
     arcpy.env.overwriteOutput = True
     ARCPY_AVAILABLE = True
 except ImportError:
