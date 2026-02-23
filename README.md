@@ -64,11 +64,11 @@ conda activate <environment-name>
 ```
 ---
 
-##Data
+## Data
 The input data (hazard maps, road networks, exposure layers, etc.) is **not included** in this repository.
 
 ---
-##Authors
+## Authors
 - **Elco Koks**
 - **Joël De Plaen**
 - **Valentin Weiwad**
