@@ -36,7 +36,7 @@ The workflow follows this approximate sequence:
 | **2. Criticality Analysis** | Compute disruption impact of each road segment | `2_MainNetwork_CriticalityAnalysis.ipynb` | `2_MainNetwork_CriticalityAnalysis.py` |
 | **3. Accessibility Analysis** | Assess travel time of population clusters to facilities |`3a_Baseline_Accesibility_Analysis-factories.ipynb`<br>`3b_Baseline_Accesibility_Analysis-farms.ipynb`<br>`3c_Baseline_Accesibility_Analysis-firefighters.ipynb`<br>`3d_Baseline_Accesibility_Analysis-hospital.ipynb`<br>`3e_Baseline_Accesibility_Analysis-policestations.ipynb` | `3a_Baseline_Accesibility_Analysis.py`<br>`3b_plot_figures.py` |
 | **4. Hazard Mapping** | Generate hazard layers (baseline + climate change) | `4a_Hazard_maps.ipynb`<br>`4b_Hazard_Maps_Climate_Change.ipynb` | `4a_Hazard_maps.py`<br>`4b_Hazard_maps_climate_change.py` |
-| **5. Combined Risk Analysis** | Hazard‑informed network criticality and accessibility | `5a_MainNetwork_Hazard_Criticality.ipynb`<br>`5b_Flood_Scenarios_Accessibility.ipynb`<br>`5c_CombinedClimateCriticality.ipynb` notebooks | `5a_MainNetwork_Hazard_Criticality.py`<br>`5b_Flood_Scenarios_Accessibility.py`<br>`5c_CombinedClimateCriticality.py` |
+| **5. Combined Risk Analysis** | Hazard‑informed network criticality and accessibility | `5a_MainNetwork_Hazard_Criticality.ipynb`<br>`5b_Flood_Scenarios_Accessibility.ipynb`<br>`5c_CombinedClimateCriticality.ipynb` | `5a_MainNetwork_Hazard_Criticality.py`<br>`5b_Flood_Scenarios_Accessibility.py`<br>`5c_CombinedClimateCriticality.py` |
 
 ---
 
