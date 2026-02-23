@@ -19,7 +19,7 @@ This repository provides a comprehensive workflow to:
    - Police stations  
    And the access times of industrial and agricultural areas to road borders, ports and rail terminals
 4. **Evaluate hazard exposure**, including:  
-   - Flooding, landslides and snowdrifts under current climatic conditions 
+   - Flooding, landslides and snowdrifts under current climatic conditions
    - Flooding and heavy precipitation under climate change  
 5. **Calculate combined climate–criticality metric** that considers the previously evaluated hazard exposure, national-scale travel disruptions and local accessibiliy
 
@@ -31,7 +31,7 @@ The analysis is implemented through a series of Jupyter Notebooks and correspond
 The workflow follows this approximate sequence:
 
 | Step | Description | Notebooks | Scripts |
-|------|-------------|-----------|---------|
+| ------ | ------------- | ----------- | --------- |
 | **1. Network Preparation** | Load, simplify, and preprocess the national road network | `1a_NetworkFigures.ipynb`<br>`1b_NetworkPreparation.ipynb` | `1a_NetworkFigures.py`<br>`1b_NetworkPreparation.py` |
 | **2. Criticality Analysis** | Compute disruption impact of each road segment | `2_MainNetwork_CriticalityAnalysis.ipynb` | `2_MainNetwork_CriticalityAnalysis.py` |
 | **3. Accessibility Analysis** | Assess travel time of population clusters to facilities |`3a_Baseline_Accesibility_Analysis-factories.ipynb`<br>`3b_Baseline_Accesibility_Analysis-farms.ipynb`<br>`3c_Baseline_Accesibility_Analysis-firefighters.ipynb`<br>`3d_Baseline_Accesibility_Analysis-hospital.ipynb`<br>`3e_Baseline_Accesibility_Analysis-policestations.ipynb` | `3a_Baseline_Accesibility_Analysis.py`<br>`3b_plot_figures.py` |
@@ -88,6 +88,7 @@ If the environment name changes in `environment.yml`, activate with that name in
 The input data (hazard maps, road networks, exposure layers, etc.) is **not included** in this repository.
 
 ---
+
 ## Authors
 
 - **Elco Koks**
