@@ -73,6 +73,6 @@ The input data (hazard maps, road networks, exposure layers, etc.) is **not incl
 - **Joël De Plaen**
 - **Valentin Weiwad**
 ---
-##License
+## License
 
 This project is licensed under the terms of the [License](LICENSE) file.
