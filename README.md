@@ -57,8 +57,27 @@ criticality-analysis/
 ```bash
 git clone <this-repository>
 cd <repository-folder>
+```
 # Create the environment from environment.yml
-conda env create -f environment.yml
+1. Install `mamba` in your base conda environment:
+
+```bash
+conda install -n base -c conda-forge mamba
+```
+
+2. Create the project environment from `environment.yml`:
+
+```bash
+mamba env create -f environment.yml
+```
+
+3. Activate the new environment:
+
+```bash
+conda activate criticality_env
+```
+
+If the environment name changes in `environment.yml`, activate with that name instead.
 # Activate the environment
 conda activate <environment-name>
 ```
