@@ -78,9 +78,7 @@ conda activate criticality_env
 ```
 
 If the environment name changes in `environment.yml`, activate with that name instead.
-# Activate the environment
-conda activate <environment-name>
-```
+
 ---
 
 ## Data
