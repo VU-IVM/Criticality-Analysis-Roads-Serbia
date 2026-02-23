@@ -49,7 +49,7 @@ criticality-analysis/
     └── config/                    # Configuration folder
         └── network_config.py      # Main configuration file (paths & settings)
 
-```markdown
+```
 ---
 
 ## Installation
