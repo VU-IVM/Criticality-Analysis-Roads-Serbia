@@ -61,7 +61,7 @@ cd <repository-folder>
 conda env create -f environment.yml
 # Activate the environment
 conda activate <environment-name>
-
+```
 ---
 
 ##Data
