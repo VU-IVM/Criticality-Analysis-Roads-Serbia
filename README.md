@@ -44,8 +44,9 @@ The workflow follows this approximate sequence:
 
 criticality-analysis/
 ├── notebooks/                     # Jupyter Notebooks for full analysis workflow
-└── src/                           # Core Python scripts for network, hazard & accessibility modelling    
+└── src/                           # Core Python scripts for network, hazard & accessibility modelling
     └── config/                    # Configuration folder
+        └── network_config.py      # Main configuration file (paths & settings)
 
 ---
 
