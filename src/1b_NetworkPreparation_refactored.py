@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 from pyproj import Geod
 from tqdm import tqdm
+import pyarrow as pa
 #from exactextract import exact_extract
 try:
     import arcpy
@@ -48,8 +49,15 @@ from matplotlib.patches import Patch, Rectangle
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+# Project root (repository root, one level above this src folder)
+PROJECT_ROOT = Path(__file__).resolve().parents[1] if '__file__' in globals() else Path.cwd().resolve()
+print(f"Project root set to: {PROJECT_ROOT}")
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 # Local/Project imports
-#from simplify import *
+from src.simplify import *
 
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -60,33 +68,27 @@ class NetworkPrepConfig:
     """Configuration for network preparation and analysis."""
     
     # Input paths
-    data_path: Path = field(default_factory=lambda: Path('input_files'))
+    data_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'input_files')
     aadt_filename: str = "PGDS_2024.shp"
     world_filename: str = "ne_10m_admin_0_countries.shp"
     
     # Output paths
-    output_path: Path = field(default_factory=lambda: Path('intermediate_results'))
-    figures_path: Path = field(default_factory=lambda: Path('figures'))
+    output_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'intermediate_results')
+    figures_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'figures')
     
-    # ArcGIS parameters
-    # # ArcGIS parameters
-    if ARCPY_AVAILABLE:
-        arcgis_input_layer: Optional[str] = None
-        arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
-    else:
-        # If no arcpyinput
-        # check if temp folder useful
-        gis_input_layer: Optional[str] = osm_filename
-#        gis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
+    # Input file paths (for both ArcGIS and non-ArcGIS environments)
+    network_input_layer: Path = field(default_factory=lambda: PROJECT_ROOT / 'input_files' / "roads_serbia_original_full_AADT.parquet")
+    arcgis_input_layer: Optional[str] = None
+    arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
     
-    # Network snapping parameters
+    # Network snapping parameters in meters for topology errors (e.g., small gaps at intersections)
     snap_tolerance: float = 2.0
-    snap_search_buffer: float = 30.0
-    snap_max_iterations: int = 20
+    snap_search_buffer: float = 30.0 # radius
+    snap_max_iterations: int = 20 # maximum number of iterations to prevent infinite loops
     
-    # AADT merge parameters
-    overlap_threshold: float = 0.5
-    endpoint_buffer: float = 1.0
+    # AADT merge parameters for spatial joins between AADT segments and road segments.
+    overlap_threshold: float = 0.5 # 50% overlap required to consider a match valid
+    endpoint_buffer: float = 1.0 # Buffer distance to consider roads as touching endpoints when filling missing AADT values
     
     # Country filtering
     exclude_country_code: str = 'KOS'  # Kosovo
@@ -202,11 +204,11 @@ def get_endpoints(geom) -> Tuple[Optional[Point], Optional[Point]]:
     else:
         return None, None
 
-def load_serbian_network_no_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
+def load_network(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     """
     Load Serbian road network from a GIS file path using GeoPandas.
     
-    The file path is specified in ``config.gis_input_layer`` and is read using
+    The file path is specified in ``config.network_input_layer`` and is read using
     :func:`geopandas.read_file`.
     
     Args:
@@ -214,8 +216,12 @@ def load_serbian_network_no_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
     """    
     
     # Read into GeoDataFrame
-    gdf = gpd.read_file(config.gis_input_layer)
+    gdf = gpd.read_parquet(config.network_input_layer)
     print(f"Successfully loaded feature layer.")
+    
+    # Select relevant attributes
+    attributes = config.road_attributes + ['geometry']
+    gdf = gdf[attributes]
     
     return gdf
 
@@ -342,9 +348,12 @@ def snap_network_iteratively(gdf: gpd.GeoDataFrame,
         if iteration > config.snap_max_iterations:
             print("Max iterations reached")
             break
-    
-    arcpy.AddMessage(f"Snapped network iteratively.")
-    arcpy.AddMessage(f"\nTotal snaps made: {total_snaps}")
+        if ARCPY_AVAILABLE:
+            arcpy.AddMessage(f"Snapped network iteratively.")
+            arcpy.AddMessage(f"\nTotal snaps made: {total_snaps}")
+        else:
+            print(f"Snapped network iteratively.")
+            print(f"\nTotal snaps made: {total_snaps}")
     return gdf
 
 
@@ -360,17 +369,26 @@ def prepare_network_topology(pers_network: gpd.GeoDataFrame,
     Returns:
         Network with proper topology
     """
+    # #JDP
+    # # Add osm_id column if it doesn't exist (required by simplify.py functions)
+    # if 'osm_id' not in pers_network.columns:
+    #     pers_network['osm_id'] = range(len(pers_network))
+    
     # Create a Network object from the input DataFrame
     net = Network(edges=pers_network)
-    
     net = add_endpoints(net)
     split_attributes = [attr for attr in config.road_attributes if attr != 'geometry']
     net = split_edges_at_nodes(net, attributes=split_attributes)
     net = add_endpoints(net)
     net = add_ids(net)
-    net = add_topology(net)
+    net = add_topology(net) 
     
     pers_network = net.edges.set_crs(pers_network.crs)
+    
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage(f"After topology prep, columns: {list(pers_network.columns)}")
+    else:
+        print(f"After topology prep, columns: {list(pers_network.columns)}")
     
     return pers_network
 
@@ -386,6 +404,13 @@ def load_aadt_data(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
         GeoDataFrame with AADT data
     """
     aadt_network = gpd.read_file(config.aadt_path)
+    
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage(f"Loaded AADT data with columns: {list(aadt_network.columns)}")
+    else:
+        print(f"Loaded AADT data with columns: {list(aadt_network.columns)}")
+    
+    # Remove rows with missing AADT data
     aadt_network.dropna(subset=config.aadt_original_columns, inplace=True)
     return aadt_network
 
@@ -404,9 +429,29 @@ def merge_aadt_with_network(pers_network: gpd.GeoDataFrame,
     Returns:
         Network with AADT values merged
     """
+    aadt_cols = config.aadt_original_columns
+
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage(f"Merging AADT data with network on columns: {aadt_cols + ['oznaka_deo']}")
+    else:
+        print(f"Merging AADT data with network on columns: {aadt_cols + ['oznaka_deo']}")
+        print(f"pers_network columns: {list(pers_network.columns)}")
+        print(f"aadt_network columns: {list(aadt_network.columns)}")
+
+    if 'oznaka_deo' not in pers_network.columns:
+        if 'oznaka_deo_left' in pers_network.columns:
+            pers_network = pers_network.rename(columns={'oznaka_deo_left': 'oznaka_deo'})
+        elif 'oznaka_deo_right' in pers_network.columns:
+            pers_network = pers_network.rename(columns={'oznaka_deo_right': 'oznaka_deo'})
+        else:
+            raise KeyError(
+                "Required column 'oznaka_deo' not found in pers_network after topology preparation. "
+                f"Available columns: {list(pers_network.columns)}"
+            )
+
     # First merge on oznaka_deo
     first_merger = pers_network.merge(
-        aadt_network[config.aadt_original_columns + ['oznaka_deo']], 
+        aadt_network[aadt_cols + ['oznaka_deo']], 
         how='left', 
         left_on='oznaka_deo', 
         right_on='oznaka_deo'
@@ -414,7 +459,7 @@ def merge_aadt_with_network(pers_network: gpd.GeoDataFrame,
     
     # Spatial join for unmatched rows
     overlap = first_merger.loc[first_merger.PA.isna()][pers_network.columns].sjoin(
-        aadt_network[config.aadt_original_columns + ['oznaka_deo', 'geometry']], 
+        aadt_network[aadt_cols + ['oznaka_deo', 'geometry']], 
         how='left', 
         predicate='intersects'
     )
@@ -455,7 +500,7 @@ def merge_aadt_with_network(pers_network: gpd.GeoDataFrame,
     
     # Concatenate results
     AADT_connected = pd.concat([
-        first_merger.loc[first_merger.dropna(subset=config.aadt_original_columns).index], 
+        first_merger.loc[first_merger.dropna(subset=aadt_cols).index], 
         result
     ])
     AADT_connected = gpd.GeoDataFrame(pd.concat([
@@ -475,7 +520,10 @@ def merge_aadt_with_network(pers_network: gpd.GeoDataFrame,
     }
     AADT_connected = AADT_connected.rename(columns=column_mapping)
     
+    # Convert to float64 after renaming (matching notebook procedure)
     AADT_connected[config.traffic_types] = AADT_connected[config.traffic_types].astype(np.float64)
+    
+    # Ensure it's a GeoDataFrame with proper CRS
     AADT_connected = gpd.GeoDataFrame(AADT_connected, geometry='geometry')
     
     return AADT_connected
@@ -536,8 +584,11 @@ def fill_missing_aadt(AADT_connected: gpd.GeoDataFrame,
     # ============================================
     # PASS 1: Fill from both endpoints touching roads with AADT
     # ============================================
-    arcpy.AddMessage("Pass 1: Filling from roads touching both endpoints...")
-    
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage("Pass 1: Filling from roads touching both endpoints...")
+    else:
+        print("Pass 1: Filling from roads touching both endpoints...")
+
     missing_aadt = AADT_connected[AADT_connected['total_aadt'].isna()].index.tolist()
     filled_count_pass1 = 0
     
@@ -561,14 +612,20 @@ def fill_missing_aadt(AADT_connected: gpd.GeoDataFrame,
             
             filled_count_pass1 += 1
     
-    arcpy.AddMessage(f"Pass 1 filled {filled_count_pass1} roads")
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage(f"Pass 1 filled {filled_count_pass1} roads")
+    else:
+        print(f"Pass 1 filled {filled_count_pass1} roads")
     
     # ============================================
     # PASS 2: Fill with median by kategorija, then cap by touching roads
     # ============================================
     # JDP: why having arcpy already?
-    arcpy.AddMessage("Pass 2: Filling with kategorija median...")
-    
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage("Pass 2: Filling with kategorija median...")
+    else:
+        print("Pass 2: Filling with kategorija median...")
+
     # Calculate median values per kategorija
     kategoria_medians = AADT_connected.groupby('kategorija')[traffic_cols].median()
     
@@ -602,12 +659,17 @@ def fill_missing_aadt(AADT_connected: gpd.GeoDataFrame,
                     AADT_connected.loc[idx, col] = max_touching_values[col]
         
         filled_count_pass2 += 1
-    
-    arcpy.AddMessage(f"Pass 2 filled {filled_count_pass2} roads")
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage(f"Pass 2 filled {filled_count_pass2} roads")
+    else:
+        print(f"Pass 2 filled {filled_count_pass2} roads")
     
     # Summary
     remaining_missing = AADT_connected['total_aadt'].isna().sum()
-    arcpy.AddMessage(f"\nRemaining roads without AADT: {remaining_missing}")
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage(f"\nRemaining roads without AADT: {remaining_missing}")
+    else:
+        print(f"\nRemaining roads without AADT: {remaining_missing}")
     
     return AADT_connected
 
@@ -837,16 +899,22 @@ def create_igraph_and_export(base_network: gpd.GeoDataFrame,
     edges_gdf.to_file(config.output_path / 'PERS_directed_final.shp')
     
     directed_final = (config.output_path / "PERS_directed_final.shp").resolve()
-    arcpy.AddMessage(f"Directed graph saved to {directed_final}")
+    if ARCPY_AVAILABLE:
+        arcpy.AddMessage(f"Directed graph saved to {directed_final}")
+    else:
+        print(f"Directed graph saved to {directed_final}")
     
     # Add to ArcGIS Pro map
-    try:
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        m = aprx.listMaps()[0]
-        layer = m.addDataFromPath(str(directed_final))
-        arcpy.AddMessage(f"Directed graph added as layer: {layer.name}")
-    except Exception as e:
-        arcpy.AddMessage(f"Could not add to map: {e}")
+    if ARCPY_AVAILABLE:
+        try:
+            aprx = arcpy.mp.ArcGISProject("CURRENT")
+            m = aprx.listMaps()[0]
+            layer = m.addDataFromPath(str(directed_final))
+            arcpy.AddMessage(f"Directed graph added as layer: {layer.name}")
+        except Exception as e:
+            arcpy.AddWarning(f"Could not add to map: {e}")
+    else:
+        print(f"WARNING: Could not add to map, not running in ArcGIS Pro.")
 
 
 def main():
@@ -858,7 +926,10 @@ def main():
     
     # Step 1: Load network from ArcGIS
     print("Step 1: Loading network from ArcGIS...")
-    pers_network = load_network_from_arcgis(config)
+    if ARCPY_AVAILABLE:
+        pers_network = load_network_arcpy(config)
+    else:
+        pers_network = load_network(config)
     
     # Step 2: Snap network iteratively
     print("Step 2: Snapping network...")

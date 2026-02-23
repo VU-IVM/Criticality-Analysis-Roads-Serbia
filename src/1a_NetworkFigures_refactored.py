@@ -47,31 +47,29 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
-# Set working directory
-import os
-print(os.getcwd())
-os.chdir('/Users/joeldeplaen/Documents/GitHub/Analysis---Copy2')
+# Project root (repository root, one level above this src folder)
+PROJECT_ROOT = Path(__file__).resolve().parents[1] if '__file__' in globals() else Path.cwd().resolve()
+print(f"Project root set to: {PROJECT_ROOT}")
 
 @dataclass
 class NetworkConfig:
     """Configuration for network analysis and visualization."""
     
     # Input paths
-    data_path: Path = field(default_factory=lambda: Path('input_files'))
+    data_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'input_files')
     osm_filename: str = "SRB.osm.pbf"
+    pers_road_filename: str = "DeoniceRSDP-Jul2025..shp"
     
     # Output paths
-    output_path: Path = field(default_factory=lambda: Path('figures'))
+    output_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'figures')
     
-    # # ArcGIS parameters
+    # ArcGIS parameters
     if ARCPY_AVAILABLE:
         arcgis_input_layer: Optional[str] = None
         arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
     else:
         # If no arcpyinput
-        # check if temp folder useful
-        gis_input_layer: Optional[str] = osm_filename
-#        gis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
+        gis_input_layer: Optional[str] = str(PROJECT_ROOT / 'input_files' / pers_road_filename)
         
     # OSM configuration
     osm_keys: List[str] = field(default_factory=lambda: [
@@ -196,7 +194,7 @@ def load_osm_network(config: NetworkConfig) -> gpd.GeoDataFrame:
     """
     # Load features from OSM
     features = gpd.read_file(config.osm_path, layer="lines")
-    features = features[features["highway"].notna()]
+    features = features[features["highway"].notna()] #In OSM, the highway tag identifies roads (motorway, primary, residential, etc.).
     
     # Extract OSM keys from other_tags field
     for key in config.osm_keys:
@@ -477,6 +475,7 @@ def plot_network_comparison(gdf: gpd.GeoDataFrame,
                                                 facecolor='white', alpha=0.8))
     
     # ============ RIGHT MAP (B) - OSM Road Network ============
+    
     base_network_filtered = prepare_osm_network_for_plotting(base_network, config)
     network_mercator = base_network_filtered.to_crs(3857)
     
@@ -627,22 +626,32 @@ def main():
     plot_osm_network(base_network_filtered, config)
     
     # Load and plot Serbian network (requires ArcGIS)
-    try:
-        print("Loading Serbian network...")
-        if ARCPY_AVAILABLE:
+    print("Loading Serbian network...")
+    
+    gdf = None
+    if ARCPY_AVAILABLE:
+        try:
+            print("ArcGIS detected.")
             gdf = load_serbian_network_arcpy(config)
-        else:
-            gdf = load_serbian_network_no_arcpy(config)
-        
+        except Exception as e:
+            print(f"Error loading Serbian network with ArcGIS: {e}")
+    
+    elif ARCPY_AVAILABLE is False:
+        try:
+            print("ArcGIS not available, attempting to load Serbian network from file...")
+            gdf = load_serbian_network_no_arcpy(config)        
+        except Exception as e:
+            print(f"Error loading Serbian network from file: {e}")
+
+    if gdf is not None:
         print("Creating Serbian network plot...")
         plot_serbian_network(gdf, config)
-        
+
         print("Creating network comparison plot...")
         plot_network_comparison(gdf, base_network, config)
-    except Exception as e:
-        print(f"Serbian network processing skipped: {e}")
-        print("This is expected if ArcGIS is not available or no input layer specified.")
-    
+    else:
+        print("Serbian network processing skipped: no Serbian network data loaded.")
+
     # Plot road length statistics
     print("Creating road length statistics plot...")
     plot_road_length_statistics(base_network_filtered, config)
