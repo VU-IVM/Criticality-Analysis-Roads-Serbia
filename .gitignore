@@ -59,3 +59,12 @@ Thumbs.db
 # -----------------------
 .vscode/
 .idea/
+
+# -----------------------
+# Flowcharts
+# -----------------------
+flowcharts/1a_network_figures.mmd
+flowcharts/3a_baseline_accessibility.mmd
+flowcharts/2_criticality_spof.mmd
+flowcharts/render_mermaid_flowcharts.sh
+flowcharts/1b_network_preparation.mmd
