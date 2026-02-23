@@ -1,7 +1,7 @@
 # Road Network Criticality & Accessibility Analysis
 
 A collection of Python scripts and Jupyter Notebooks designed to assess the **criticality** of road network segments and evaluate **population accessibility** to emergency services.  
-Originally developed for the **Republic of Serbia**, the workflow is fully transferable to other national road networks.
+Originally developed for the **Republic of Serbia**, the workflow is transferable to other national road networks.
 
 ---
 
@@ -11,9 +11,8 @@ This repository provides a comprehensive workflow to:
 
 1. **Prepare and process road networks**  
 2. **Assess the criticality** of each road segment by quantifying the impact of its disruption:  
-   - Vehicle‑hours lost  
-   - Person‑hours lost  
-   - Additional kilometres travelled  
+   - Vehicle hours lost, vehicle kilometres lost
+   - Tonnage hours lost, tonnage kilometres lost 
 3. **Analyse accessibility** of population clusters to:  
    - Fire stations  
    - Hospitals  
@@ -56,7 +55,7 @@ criticality-analysis/
 ## Installation
 
 ```bash
-git clone <this-repository>
+git clone https://github.com/VU-IVM/Criticality-Analysis-Roads-Serbia.git
 cd <repository-folder>
 ```
 
