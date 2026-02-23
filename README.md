@@ -40,7 +40,6 @@ The workflow follows this approximate sequence:
 
 ---
 
-```markdown
 ## Repository Structure
 
 ```plaintext
@@ -49,7 +48,6 @@ criticality-analysis/
 └── src/                           # Core Python scripts for network, hazard & accessibility modelling
     └── config/                    # Configuration folder
         └── network_config.py      # Main configuration file (paths & settings)
-```markdown
 ---
 
 ## Installation
