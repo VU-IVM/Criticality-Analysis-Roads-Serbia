@@ -44,3 +44,50 @@ The workflow follows this approximate sequence:
 
 ### ** `/notebooks`**  
 Analysis notebooks (interactive):
+NOTEBOOKS/
+│   1a_NetworkFigures.ipynb
+│   1b_NetworkPreparation.ipynb
+│   2_MainNetwork_CriticalityAnalysis.ipynb
+│   3a_Baseline_Accesibility_Analysis-factories.ipynb
+│   3b_Baseline_Accesibility_Analysis-farms.ipynb
+│   3c_Baseline_Accesibility_Analysis-firefighters.ipynb
+│   3d_Baseline_Accesibility_Analysis-hospital.ipynb
+│   3e_Baseline_Accesibility_Analysis-policestations.ipynb
+│   4a_Hazard_maps.ipynb
+│   4b_Hazard_Maps_Climate_Change.ipynb
+│   5a_MainNetwork_Hazard_Criticality.ipynb
+│   5b_Flood_Scenarios_Accessibility.ipynb
+│   5c_CombinedClimateCriticality.ipynb
+│   firefighters.parquet
+│   firefighter_settle_results.parquet
+│   simplify.py
+
+### ** `/src`**  
+Python implementation of all analytical modules:
+SRC/
+│   1a_NetworkFigures.py
+│   1a_NetworkFigures_refactored.py
+│   1b_NetworkPreparation.py
+│   1b_NetworkPreparation_refactored.py
+│   2_MainNetwork_CriticalityAnalysis.py
+│   2_MainNetwork_CriticalityAnalysis_refactored.py
+│   3a_Baseline_Accesibility_Analysis.py
+│   3b_plot_figures.py
+│   4a_Hazard_maps.py
+│   4b_Hazard_maps_climate_change.py
+│   5a_MainNetwork_Hazard_Criticality.py
+│   5b_Flood_Scenarios_Accessibility.py
+│   5c_CombinedClimateCriticality.py
+│   simplify.py
+│
+└── config/
+│   network_config.py
+
+---
+
+## Installation
+
+```bash
+git clone <this-repository>
+cd <repository-folder>
+pip install -r requirements.txt
