@@ -28,7 +28,7 @@ from tqdm import tqdm
 import pyarrow as pa
 #from exactextract import exact_extract
 try:
-    import arcpy
+    import arcpy # type: ignore
     arcpy.env.overwriteOutput = True
     ARCPY_AVAILABLE = True
 except ImportError:

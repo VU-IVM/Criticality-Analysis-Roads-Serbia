@@ -23,7 +23,7 @@ import pandas as pd
 from tqdm import tqdm
 # try if arcpy is available
 try:
-    import arcpy
+    import arcpy # type: ignore
     ARCPY_AVAILABLE = True
 except ImportError:
     ARCPY_AVAILABLE = False
