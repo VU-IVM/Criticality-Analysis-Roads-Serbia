@@ -79,21 +79,21 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
     """
 
     #Read nation wide data on hazard exposure and the road network
-    gdf_hazards = gpd.read_parquet(config.intermediate_results_path / "main_network_hazard_exposure.parquet") 
-    base_network = gpd.read_parquet(config.intermediate_results_path / 'PERS_directed_final.parquet')
+    gdf_hazards = gpd.read_parquet(config.Path_main_network_hazard_exposure) 
+    base_network = gpd.read_parquet(config.Path_processed_road_network)
 
     #Load results of road criticality analysis for emergency services and economic sectors
-    hospital_exposed_edges = gpd.read_parquet(config.intermediate_results_path / 'hospital_impacts.parquet').to_crs(gdf_hazards.crs)
-    factory_exposed_edges = gpd.read_parquet(config.intermediate_results_path / 'factory_impacts.parquet').to_crs(gdf_hazards.crs)
-    police_exposed_edges = gpd.read_parquet(config.intermediate_results_path / 'police_impacts.parquet').to_crs(gdf_hazards.crs)
-    fire_exposed_edges = gpd.read_parquet(config.intermediate_results_path / 'fire_impacts.parquet').to_crs(gdf_hazards.crs)
-    border_exposed_edges = gpd.read_parquet(config.intermediate_results_path / 'road_impacts.parquet').to_crs(gdf_hazards.crs)
-    port_exposed_edges = gpd.read_parquet(config.intermediate_results_path / 'port_impacts.parquet').to_crs(gdf_hazards.crs)
-    railway_exposed_edges = gpd.read_parquet(config.intermediate_results_path / 'rail_impacts.parquet').to_crs(gdf_hazards.crs)
+    hospital_exposed_edges = gpd.read_parquet(config.Path_hospital_impacts).to_crs(gdf_hazards.crs)
+    factory_exposed_edges = gpd.read_parquet(config.Path_factory_impacts).to_crs(gdf_hazards.crs)
+    police_exposed_edges = gpd.read_parquet(config.Path_police_impacts).to_crs(gdf_hazards.crs)
+    fire_exposed_edges = gpd.read_parquet(config.Path_fire_fighter_impacts).to_crs(gdf_hazards.crs)
+    border_exposed_edges = gpd.read_parquet(config.Path_road_border_impacts).to_crs(gdf_hazards.crs)
+    port_exposed_edges = gpd.read_parquet(config.Path_port_impacts).to_crs(gdf_hazards.crs)
+    railway_exposed_edges = gpd.read_parquet(config.Path_railway_impacts).to_crs(gdf_hazards.crs)
 
     #Load results of climate change analysis
-    future_flood_change_rp =  gpd.read_parquet(config.intermediate_results_path / 'Future Floods change in RP.parquet').to_crs(gdf_hazards.crs)
-    future_rainfall_change =  gpd.read_parquet(config.intermediate_results_path / 'change in maximum daily precipitation rcp 85 period 2.paquet').to_crs(gdf_hazards.crs)
+    future_flood_change_rp =  gpd.read_parquet(config.Path_future_floods_change_RP).to_crs(gdf_hazards.crs)
+    future_rainfall_change =  gpd.read_parquet(config.Path_precipitation_change_rcp_8_5_far_future).to_crs(gdf_hazards.crs)
 
 
     # Add each impact column (choose your aggregator: 'mean' or 'max')
@@ -812,7 +812,7 @@ def print_statistics(gdf_hazards: gpd.GeoDataFrame, config: NetworkConfig) -> No
     print(f"  H: {top1['H_hazard_exposure']:.4f}, T: {top1['T_travel_disruption']:.4f}, A: {top1['A_local_accessibility']:.4f}")
 
     #Save results as Excel file
-    gdf_hazards.to_excel(config.intermediate_results_path / 'VUA_Climate_Criticality_PERS.xlsx')
+    gdf_hazards.to_excel(config.Path_climate_criticality_results)
 
 
 

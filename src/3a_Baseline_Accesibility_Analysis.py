@@ -259,7 +259,7 @@ def plot_access_times(df_factories: pd.DataFrame, Sink: pd.DataFrame, config: Ne
             shadow=True,
             framealpha=0.95)
 
-    plt.savefig(config.figure_path / 'factory_access_avg.png', dpi=200, bbox_inches='tight')
+    plt.savefig(config.Path_factory_acces_avg, dpi=200, bbox_inches='tight')
     plt.show()
 
 
@@ -323,9 +323,7 @@ def load_agricultural_data(config: NetworkConfig) -> pd.DataFrame:
     Returns:
         Pandas DataFrame with agricultural areas
     """
-
-    Path_AgriFile = config.data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
-    DataFrame_Agri = pd.read_excel(Path_AgriFile)
+    DataFrame_Agri = pd.read_excel(config.Path_agriculture_input)
 
     Clean_DataFrame_Agri = DataFrame_Agri.dropna(subset=["latitude", "longitude", "Utilized agricultural land (UAL)"])
 

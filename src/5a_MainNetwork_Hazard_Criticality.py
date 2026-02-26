@@ -68,12 +68,10 @@ def load_data(config: NetworkConfig) -> Tuple[gpd.GeoDataFrame, xr.Dataset]:
       if you want to reuse for other countries.
     """
     # Load results
-    gdf_results = gpd.read_parquet(
-        config.intermediate_results_path / "criticality_results.parquet"
-    )
+    gdf_results = gpd.read_parquet(config.Path_criticality_results)
 
     # Load countries and select target country
-    countries = gpd.read_file(config.data_path / "ne_10m_admin_0_countries.shp")
+    countries = gpd.read_file(config.world_boundaries)
     country = countries.loc[countries.SOV_A3 == "SRB"]
     country_plot = countries.loc[countries.SOV_A3 == 'SRB']
 
@@ -82,7 +80,7 @@ def load_data(config: NetworkConfig) -> Tuple[gpd.GeoDataFrame, xr.Dataset]:
 
     # Load flood raster and clip to country bbox
     hazard = xr.open_dataset(
-        config.data_path / "Europe_RP100_filled_depth.tif",
+        config.flood_map_RP100,
         engine="rasterio"
     )
     hazard_clipped = hazard.rio.clip_box(
@@ -258,7 +256,7 @@ def read_snowdrift_data(config: NetworkConfig) -> gpd.GeoDataFrame:
         GeoDataFrame with snow drift features.
     """
 
-    snow_drift = gpd.read_file(config.data_path / "snezni_nanosi_studije.shp")
+    snow_drift = gpd.read_file(config.Path_snow_drift_data)
 
     return snow_drift
 
@@ -313,7 +311,7 @@ def read_landslide_data(config: NetworkConfig) -> gpd.GeoDataFrame:
     """
 
 
-    landslides = gpd.read_file(config.data_path / "Nestabilne_pojave.shp")
+    landslides = gpd.read_file(config.Path_landslide_data)
     landslides.geometry = landslides.geometry.buffer(10)
 
     return landslides
@@ -418,7 +416,7 @@ def calculate_combined_hazard(gdf_results: gpd.GeoDataFrame, gdf_vhl_flooded: gp
     affected_all = gdf_hazards.loc[mask]
 
 
-    gdf_hazards.to_parquet(config.intermediate_results_path / "main_network_hazard_exposure.parquet")
+    gdf_hazards.to_parquet(config.Path_main_network_hazard_exposure)
 
     return gdf_hazards
 
