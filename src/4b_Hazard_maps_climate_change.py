@@ -51,14 +51,14 @@ color_dict["No data"] = "white"
 
 
 def load_data(config):
-    basins = pd.read_csv(config.intermediate_results_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv")
+    basins = pd.read_csv(config.Path_flood_statistics_per_basin)
 
-    all_basins = gpd.read_file(config.data_path / "hybas_eu_lev09_v1c.shp")
+    all_basins = gpd.read_file(config.basins_shapefile)
     basins = gpd.GeoDataFrame(basins.merge(all_basins,left_on='basinID',right_on='HYBAS_ID'))
 
     # --- Open NetCDF dataset ---
-    ds = xr.open_dataset(config.data_path / "disEnsemble_highExtremes.nc")
-    roads = gpd.read_parquet(config.intermediate_results_path / "PERS_directed_final.parquet")
+    ds = xr.open_dataset(config.Path_flooding_climate_change)
+    roads = gpd.read_parquet(config.Path_processed_road_network)
 
     # Reproject to shared CRS
     ds = ds.rio.write_crs("EPSG:3035", inplace=False)
@@ -282,7 +282,7 @@ def plot_basins(basins_3035, config):
 
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
     plt.savefig(config.figure_path / "Change in return period.png", dpi=300, bbox_inches="tight")
-    basins_3857.to_parquet(config.intermediate_results_path / "Future Floods change in RP.parquet")
+    basins_3857.to_parquet(config.Path_future_floods_change_RP)
     if config.show_figures:
         plt.show()
 
@@ -381,7 +381,7 @@ def plot_effect_on_roads(roads, roads_rp, config):
 
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
     plt.savefig(config.figure_path / "Change in return period experienced by roads.png", dpi=300, bbox_inches="tight")
-    roads_rp.to_parquet(config.intermediate_results_path / "Future Floods change in RP experienced by roads.parquet")
+    roads_rp.to_parquet(config.Path_future_flooding_roads)
     if config.show_figures:
         plt.show()
 
@@ -414,15 +414,15 @@ def calculate_future_max_precipitation(config, roads, variables):
         results[rcp] = {}
         for period in ("1", "2"):
 
-            file_name = r"Climate Change Precipitation\results\rcp" + rcp + "_rx1d_change" + period + ".nc"
-            file = config.data_path / file_name
+            file_name = "rcp" + rcp + "_rx1d_change" + period + ".nc"
+            file = config.climate_change_precipitation_folder / file_name
            
             ds = xr.open_dataset(
                 file
             )
 
-            file_name = r"Climate Change Precipitation\results\rcp" + rcp + "_rx1d_change" + period + "_ensmed.nc"
-            file_name_ensamble = config.data_path / file_name
+            file_name = "rcp" + rcp + "_rx1d_change" + period + "_ensmed.nc"
+            file_name_ensamble = config.climate_change_precipitation_folder / file_name
             ensamble_median = xr.open_dataset(
                 file_name_ensamble
             )

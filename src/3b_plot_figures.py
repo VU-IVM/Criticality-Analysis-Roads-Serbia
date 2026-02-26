@@ -137,13 +137,13 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
 
     if emergency_service == "firefighters":
         ax_curve.set_xlabel('Access time to closest fire station (hours)', fontsize=12)
-        file_name = 'baseline_accessibility_fire_stations.png'
+        file_name = config.Path_baseline_accessibility_fire_stations
     elif emergency_service == "hospitals":
         ax_curve.set_xlabel('Access time to closest health care facility (hours)', fontsize=12)
-        file_name = 'baseline_accessibility_hospitals.png'
+        file_name = config.Path_baseline_accessibility_hospitals
     elif emergency_service == "police":
         ax_curve.set_xlabel('Access time to closest police station (hours)', fontsize=12)
-        file_name = 'baseline_accessibility_police_stations.png'
+        file_name = config.Path_baseline_accessibility_police_stations
     else:
         raise ValueError(
             f"Invalid emergency_service '{emergency_service}'. "
@@ -163,7 +163,7 @@ def plot_access_curve(df_worldpop: gpd.GeoDataFrame, config: NetworkConfig, emer
         ax_curve.plot(threshold_100_2, 100, 'o', color='#003049', markersize=6)
         ax_curve.text(threshold_100_2+0.05, 94, f'{threshold_100_2:.1f}h', color='black', ha='left', fontsize=12)
 
-    plt.savefig(config.figure_path / file_name,dpi=150,transparent=True)
+    plt.savefig(file_name,dpi=150,transparent=True)
 
 
     if config.show_figures == True:
@@ -424,7 +424,7 @@ def plot_access_time_agriculture_map(df_agri: pd.DataFrame, Sinks: pd.DataFrame,
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
-    plt.savefig(config.figure_path / 'agriculture_access_by_type.png', dpi=200, bbox_inches='tight')
+    plt.savefig(config.Path_agriculture_access_by_type, dpi=200, bbox_inches='tight')
     if config.show_figures == True:
         plt.show()
 
@@ -500,17 +500,17 @@ def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, conf
     if emergency_service == "firefighters":
         legend_patches.append(Line2D([0], [0], marker='+', color='red', lw=0, 
                                 label='Fire departments', markersize=15))
-        file_name = 'firefighter_access.png'
+        file_name = config.Path_firefighter_access_map
 
     elif emergency_service == "hospitals":
         legend_patches.append(Line2D([0], [0], marker='+', color='red', lw=0, 
                                 label='hospitals', markersize=15))
-        file_name = 'hospital_access.png'
+        file_name = config.Path_hospital_access_map
 
     elif emergency_service == "police":
         legend_patches.append(Line2D([0], [0], marker='+', color='red', lw=0, 
                                 label='police stations', markersize=15))
-        file_name = 'police_station_access.png'
+        file_name = config.Path_police_station_access_map
 
     else:
         raise ValueError(
@@ -532,7 +532,7 @@ def plot_access_time_map(df_worldpop: gpd.GeoDataFrame, Sink: pd.DataFrame, conf
 
     legend.get_title().set_fontweight('bold')
 
-    plt.savefig(config.figure_path / file_name, dpi=200, bbox_inches='tight')
+    plt.savefig(file_name, dpi=200, bbox_inches='tight')
 
     if config.show_figures == True:
         plt.show()

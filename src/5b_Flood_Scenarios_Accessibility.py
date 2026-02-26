@@ -1,1671 +1,1150 @@
+# ### Step1: Importing the required packages
 
 import os,sys
 import pickle
 import xarray as xr
+import igraph as ig
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 from shapely import wkt
 from shapely.geometry import Point
-#import cftime
+import cftime
 from pathlib import Path
 from tqdm import tqdm
-import contextily as ctx
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm  # For colormap
-from matplotlib.lines import Line2D  # For custom legend
-from matplotlib.colors import Normalize
-from matplotlib.ticker import FuncFormatter, MultipleLocator,LinearLocator
-import osm_flex.extract as ex
-import igraph as ig
-import networkx as nx
 from rasterio.enums import Resampling
 from exactextract import exact_extract
-import matplotlib.patches as mpatches
-from typing import Any
 
-import matplotlib.pyplot as plt
-import contextily as cx
-import pandas as pd
-import numpy as np
-from matplotlib.colors import ListedColormap
-from matplotlib.patches import Patch
+from simplify import *
+from config.network_config import NetworkConfig 
 
-from config.network_config import NetworkConfig
+# load functions
+def get_average_access_time(df_population, Sink, graph):
+    """Calculate average travel time from each origin to ALL sinks"""
+    df_population = df_population.copy()
+    
+    unique_pop_vertex_ids = df_population['vertex_id'].unique()
+    unique_sink_vertex_ids = Sink['vertex_id'].unique()
+    
+    # Full OD matrix
+    OD_matrix = np.array(graph.distances(
+        source=unique_pop_vertex_ids,
+        target=unique_sink_vertex_ids,
+        weights='fft'
+    ))
+    OD_matrix[np.isinf(OD_matrix)] = 12  # 12 hour penalty
+    
+    # Average across all sinks (axis=1)
+    avg_time_per_origin = np.mean(OD_matrix, axis=1)
+    vertex_to_avg_time = dict(zip(unique_pop_vertex_ids, avg_time_per_origin))
+    
+    df_population['avg_access_time'] = df_population['vertex_id'].map(vertex_to_avg_time)
+    
+    return df_population
 
+def create_grid(bbox,height):
+    xmin, ymin = shapely.total_bounds(bbox)[0],shapely.total_bounds(bbox)[1]
+    xmax, ymax = shapely.total_bounds(bbox)[2],shapely.total_bounds(bbox)[3]
+    
+    rows = int(np.ceil((ymax-ymin) / height))
+    cols = int(np.ceil((xmax-xmin) / height))
 
-def load_basin_data(config: NetworkConfig) -> gpd.GeoDataFrame:
-    """
-    Load basin-level flood statistics and merge them with the full Hybas basin
-    geometries to produce a complete GeoDataFrame.
+    x_left_origin = xmin
+    x_right_origin = xmin + height
+    y_top_origin = ymax
+    y_bottom_origin = ymax - height
 
-    Parameters
-    ----------
-    config : NetworkConfig
-        Provides paths to the flood scenario CSV and the Hybas basin shapefile.
+    res_geoms = []
+    for countcols in range(cols):
+        y_top = y_top_origin
+        y_bottom = y_bottom_origin
+        for countrows in range(rows):
+            res_geoms.append((
+                ((x_left_origin, y_top), (x_right_origin, y_top),
+                (x_right_origin, y_bottom), (x_left_origin, y_bottom)
+                )))
+            y_top = y_top - height
+            y_bottom = y_bottom - height
+        x_left_origin = x_left_origin + height
+        x_right_origin = x_right_origin + height
 
-    Returns
-    -------
-    gpd.GeoDataFrame
-        Basins enriched with flood statistics and associated polygon geometries.
-    """
+    return shapely.polygons(res_geoms)
 
-    basins = pd.read_csv(config.intermediate_results_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv")
-
-    all_basins = gpd.read_file(config.data_path / "hybas_eu_lev09_v1c.shp")
-    basins = gpd.GeoDataFrame(basins.merge(all_basins,left_on='basinID',right_on='HYBAS_ID'))
-
-    return basins
-
-
-def plot_basins(basins: gpd.GeoDataFrame, config: NetworkConfig) -> None:
-    """
-    Plot basin-level mean water depth classes on a map and save the resulting figure.
-
-    Parameters
-    ----------
-    basins : gpd.GeoDataFrame
-        Basin polygons with a 'mean water depth (m)' column used for classifying depth.
-    config : NetworkConfig
-        Provides output path (`figure_path`) and a flag (`show_figures`) for display.
-
-    Behavior
-    --------
-    Bins basins into depth classes, renders each class with a distinct blue color,
-    adds a basemap and a custom legend, annotates summary statistics, and saves
-    'basin_water_depths.png' to the configured directory.
-    """
-
-    # Define bins for water depth data based on the histogram distribution
-    # Most basins are shallow (0-2m), with decreasing frequency toward deeper waters
-    bins = [0, 1, 2, 3, 4, np.inf]
-    labels = ['0-1m', '1-2m', '2-3m', '3-4m', '4m+']
-
-    # Create binned column
-    basins['depth_class'] = pd.cut(
-        basins['mean water depth (m)'], 
-        bins=bins, 
-        labels=labels, 
-        include_lowest=True
-    )
-
-    # Create figure with high DPI for crisp visuals
-    fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor='white')
-
-    # Create discrete colormap for water depth classes
-    # Using water/blue color palette from light to dark blue
-    colors = ['#f7fbff', '#c6dbef', '#6baed6', '#2171b5', '#08306b']
-    discrete_cmap = ListedColormap(colors)
-
-    # Convert to Web Mercator for plotting with basemap
-    basins_mercator = basins.to_crs(3857)
-
-    # Plot each water depth class with different colors
-    for i, (category, color) in enumerate(zip(labels, colors)):
-        category_data = basins_mercator[basins_mercator['depth_class'] == category]
+def get_exposure_values(country_iso3,base_network,hazard_map,Threshold,Stru_Threshold):
+    world = gpd.read_file(Path(r"C:\Users\eks510\OneDrive - Vrije Universiteit Amsterdam\Shirazian, S. (Shadi)'s files - NewCodes\Tajikistan\ne_10m_admin_0_countries.shp"))
+    country_bounds = world.loc[world.ADM0_A3 == country_iso3].bounds
+    country_geom = world.loc[world.ADM0_A3 == country_iso3].geometry
+    
+    hazard_country = hazard_map.rio.clip_box(minx=country_bounds.minx.values[0],
+                         miny=country_bounds.miny.values[0],
+                         maxx=country_bounds.maxx.values[0],
+                         maxy=country_bounds.maxy.values[0]
+                        )
+    grid_cell_size = 1
+    
+    gridded = create_grid(shapely.box(hazard_country.rio.bounds()[0],hazard_country.rio.bounds()[1],hazard_country.rio.bounds()[2],
+                                          hazard_country.rio.bounds()[3]),grid_cell_size)
         
-        if len(category_data) > 0:
-            category_data.plot(
-                ax=ax,
-                color=color,
-                linewidth=0.1,
-                edgecolor='navy',
-                alpha=0.8,
-                legend=False
+    all_bounds = gpd.GeoDataFrame(gridded,columns=['geometry']).bounds
+    
+    
+    features_to_clip = base_network.to_crs(4326)
+    
+    collect_overlay = []
+    
+    for bounds in tqdm(all_bounds.itertuples(),total=len(all_bounds)):
+        try:
+            subset_hazard = hazard_country.rio.clip_box(
+            minx=bounds.minx,
+            miny=bounds.miny,
+            maxx=bounds.maxx,
+            maxy=bounds.maxy,
             )
+    
+            subset_hazard['band_data'] = subset_hazard.band_data.rio.write_nodata(np.nan, inplace=True)
+            
+            subset_features = gpd.clip(features_to_clip, list(bounds)[1:]).to_crs(3857)
+    
+            if len(subset_features) == 0:
+                continue
+    
+            subset_hazard = subset_hazard.rio.reproject("EPSG:3857")
+    
+            values_and_coverage_per_object = exact_extract(
+                subset_hazard, subset_features, ["coverage", "values"], output="pandas"
+            )
+    
+            values_and_coverage_per_object.index = subset_features.index
+            collect_overlay.append(values_and_coverage_per_object)
+            
+        except:
+            continue 
+    
+    if not collect_overlay:
+        print("⚠ No hazard data was extracted. Returning unmodified base_network.")
+        base_network['exposed'] = False
+        base_network['exposed_values_depth'] = [[] for _ in range(len(base_network))]
+        return base_network
+    
+    base_network = base_network.merge(pd.concat(collect_overlay),left_index=True,right_index=True)
+    
+    def Flagged_exposed_segments(row):
+        if pd.isna(row['bridge']) or row['bridge'] == 'no':
+            return any(val > Threshold for val in row['values'])
+        else:
+            return any(val > Stru_Threshold for val in row['values'])
 
-    # Add basemap with optimal styling for PNG
-    cx.add_basemap(
-        ax=ax, 
-        source=cx.providers.CartoDB.Positron, 
-        alpha=0.4,
-        attribution=False
+    base_network['exposed'] = base_network.progress_apply(Flagged_exposed_segments, axis=1)
+    base_network['exposed_values_depth'] = base_network['values']
+    
+    return base_network
+
+def _get_river_basin(road_segment,basins):
+    try:
+        return basins.loc[road_segment.geometry.intersects(basins.geometry)].HYBAS_ID.values[0]
+    except:
+        return None
+    
+
+def read_factory_data(config):
+
+    DataFrame_Factory = pd.read_excel(config.Path_FactoryFile)
+
+    Clean_DataFrame_Factory = DataFrame_Factory.dropna(subset=["Latitude", "Longitude", "Factory"])
+
+    geometry = [Point(xy) for xy in zip(Clean_DataFrame_Factory["Longitude"], Clean_DataFrame_Factory["Latitude"])]
+
+    df_worldpop = gpd.GeoDataFrame(
+        Clean_DataFrame_Factory[["Number"]].rename(columns={"Number": "band_data"}),
+        geometry=geometry,
+        crs="EPSG:4326"
     )
 
-    # Enhance the plot styling
-    ax.set_aspect('equal')
-    ax.axis('off')  # Remove axis for cleaner look
+    return df_worldpop
 
-    # Create custom legend in upper right corner
-    legend_elements = [Patch(facecolor=colors[i], 
-                            label=f'{labels[i]} depth', 
-                            edgecolor='navy', 
-                            linewidth=0.5) 
-                    for i in range(len(labels))]
+def read_road_border_data(config):
 
-    legend = ax.legend(handles=legend_elements, 
-                    title='Mean Water Depth', 
-                    loc='upper right',
-                    fontsize=10,
-                    title_fontsize=12,
-                    frameon=True,
-                    fancybox=True,
-                    shadow=True,
-                    framealpha=0.9,
-                    facecolor='white',
-                    edgecolor='#cccccc')
+    Sink = pd.read_excel(config.path_to_Borders)
+    Sink = Sink.rename(columns={"LON": "Longitude", "LAT": "Latitude"})
 
-    # Add subtitle with basin statistics
-    total_basins = len(basins)
-    mean_depth = basins['mean water depth (m)'].mean()
-    ax.text(0.02, 0.02, f'Total Basins: {total_basins:,} | Average Depth: {mean_depth:.2f}m', 
-            transform=ax.transAxes, fontsize=11, 
-            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
-
-    # Enhance overall plot appearance
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
-    plt.savefig(config.figure_path / 'basin_water_depths.png', dpi=300, bbox_inches='tight')
-    if config.show_figures:
-        plt.show()
+    return Sink
 
 
-def load_road_network(config: NetworkConfig) -> gpd.GeoDataFrame:
+def create_graph_for_spatial_matching(base_network: gpd.GeoDataFrame) -> tuple[pd.DataFrame, ig.Graph]:
+
     """
-    Load the preprocessed road network for Serbia and extract the giant connected
-    component as a GeoDataFrame suitable for routing and accessibility analysis.
-
-    Parameters
-    ----------
-    config : NetworkConfig
-        Supplies the file path to the Parquet road network dataset.
-
-    Returns
-    -------
-    gpd.GeoDataFrame
-        Road network reprojected to EPSG:3857 and filtered to include only edges
-        belonging to the giant connected component of the underlying igraph graph.
-
-    Notes
-    -----
-    Creates an igraph representation internally to isolate the largest connected
-    subnetwork before returning the corresponding GeoDataFrame.
+    Create graph from road network and create nodes for spatial matching.
+    
+    Args:
+        base_network: Serbian road network
+        
+    Returns:
+        Pandas DataFrame with the nodes of the road network graph
     """
 
-    base_network = gpd.read_parquet(config.data_path / "base_network_SRB_basins.parquet")
-
-    edges = base_network.reindex(['from_id','to_id'] + [x for x in list(base_network.columns) if x not in ['from_id','to_id']],axis=1)
-    graph = ig.Graph.TupleList(edges.itertuples(index=False), edge_attrs=list(edges.columns)[2:],directed=True)
-    graph.vs['id'] = graph.vs['name']
-
+    #Create graph from road network
+    edges = base_network.reindex(['from_id','to_id'] + [x for x in list(base_network.columns) if x not in ['from_id','to_id']], axis=1)
+    graph = ig.Graph.TupleList(edges.itertuples(index=False), edge_attrs=list(edges.columns)[2:], directed=True)
     graph = graph.connected_components().giant()
     edges = edges[edges['id'].isin(graph.es['id'])]
 
-    base_network = base_network.to_crs(3857)
+    #Create nodes from edges for spatial matching
+    vertex_lookup = dict(zip(pd.DataFrame(graph.vs['name'])[0], pd.DataFrame(graph.vs['name']).index))
 
-    return base_network
+    tqdm.pandas()
+    from_id_geom = edges.geometry.progress_apply(lambda x: shapely.Point(x.coords[0]))
+    to_id_geom = edges.geometry.progress_apply(lambda x: shapely.Point(x.coords[-1]))
 
-def calculate_hospital_accessibility(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
+    from_dict = dict(zip(edges['from_id'], from_id_geom))
+    to_dict = dict(zip(edges['to_id'], to_id_geom))
+
+    nodes = pd.concat([
+        pd.DataFrame.from_dict(to_dict, orient='index', columns=['geometry']),
+        pd.DataFrame.from_dict(from_dict, orient='index', columns=['geometry'])
+    ]).drop_duplicates()
+
+    nodes['vertex_id'] = nodes.apply(lambda x: vertex_lookup[x.name], axis=1)
+    nodes = nodes.reset_index()
+
+    return nodes, graph
+
+def nearest_network_nodes(gdf_locations: gpd.GeoDataFrame, nodes: pd.DataFrame) -> pd.Series:
     """
-    Calculate hospital-related road criticality by identifying road segments where
-    disruption scenarios increase travel times from settlements to hospitals.
+    Assign the nearest network node to each input point geometry (e.g., factories,
+    agricultural areas or any other locations) using a spatial index.
 
     Parameters
     ----------
-    base_network : gpd.GeoDataFrame
-        Road network containing 'osm_id', endpoints, geometry, and attributes.
-    config : NetworkConfig
-        Provides paths to hospital disruption result files (pickled dictionaries).
+    gdf_locations : gpd.GeoDataFrame
+        GeoDataFrame of point locations to snap to the network. Must contain:
+        - 'geometry' (Point): location of each feature.
+        Side effect: a new column 'vertex_id' is created/overwritten with the
+        nearest node identifier.
+    nodes : pd.DataFrame
+        Table of network nodes. Must contain:
+        - 'geometry' (Point): node coordinates (preferably as a GeoSeries/GeoDataFrame column).
+        - 'vertex_id' (hashable/int/str): unique node identifier.
 
     Returns
     -------
-    gpd.GeoDataFrame
-        Road segments with ≥10-minute increased travel time, reprojected to EPSG:3857
-        and categorized into impact classes (10-20, 20-30, 30-40, 40-60, 60+ minutes).
+    pd.Series
+        Series of nearest node identifiers (vertex_id), index-aligned with
+        df_factories, and also written to df_factories['vertex_id'].
 
     Notes
     -----
-    Loads basin-level scenario outcomes, extracts removed edges, computes mean positive
-    travel-time impacts, cleans infinite values, filters negligible impacts, and assigns
-    each exposed edge to a delay class.
+    - Uses a shapely STRtree for efficient nearest-neighbor lookup.
+    - Ensure both inputs use the same coordinate reference system (CRS) before calling.
+    - If performance is critical for very large inputs, consider batching or pre-filtering.
     """
 
-    hospital_results_path = config.accessibility_analysis_path / "healthcare_criticality_results" / "save_new_results_SRB_basins.pkl"
-    hospital_basins = config.accessibility_analysis_path / "healthcare_criticality_results" / "unique_scenarios_SRB_basins.pkl"
+    nodes_sindex = shapely.STRtree(nodes.geometry)
+    gdf_locations['vertex_id'] = gdf_locations.geometry.progress_apply(
+    lambda x: nodes.iloc[nodes_sindex.nearest(x)].vertex_id).values
 
-    with open(hospital_results_path, 'rb') as file:
-        save_new_results = pickle.load(file)
+    return gdf_locations['vertex_id']
 
-    with open(hospital_basins, 'rb') as file:
-        save_new_basin_results = pickle.load(file)
+def map_sinks_to_nearest_network_node(Sink):
 
-    pd.options.mode.chained_assignment = None  # default='warn'
-    pd.set_option('future.no_silent_downcasting', True)
-    river_basins = list(save_new_results.keys())
+    nodes_sindex = shapely.STRtree(nodes.geometry)
 
-    collect_removed_edges = []
+    Sink['geometry'] = Sink.apply(lambda row: Point(row['Longitude'], row['Latitude']), axis=1)
+    Sink['vertex_id'] = Sink.geometry.apply(lambda x: nodes.iloc[nodes_sindex.nearest(x)].vertex_id).values
 
-    for basin in river_basins:
-        scenario_outcome = save_new_results[basin]['scenario_outcome']
-        subset_edges = base_network.loc[base_network.osm_id.astype(str).isin(save_new_results[basin]['real_edges_to_remove'])]
-        subset_edges['travel_time_impact'] = scenario_outcome.loc[scenario_outcome.Delta > 0].replace([np.inf, -np.inf], 1).Delta.mean()
+    return Sink
 
-        collect_removed_edges.append(subset_edges)
-    exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[['osm_id','from_id', 'to_id','highway','exposed','geometry','travel_time_impact']]
+def flood_exposure_factory_accessibility(base_network, df_worldpop, Sink, Factory_criticality_folder, basins_data):
 
-    hospital_exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True).set_crs(3857,allow_override=True)
+    exposed_roads = base_network[base_network.exposed].reset_index(drop=True)
 
-    # Replace inf with a specific value and nan with 0
-    hospital_exposed_edges['travel_time_impact'] = np.where(
-        np.isinf(hospital_exposed_edges['travel_time_impact']), 
-        1,  # Replace inf with this value
-        hospital_exposed_edges['travel_time_impact']
-    )
+    tqdm.pandas(desc='get basin')    
+    exposed_roads['subregion'] = exposed_roads.progress_apply(lambda road_segment: _get_river_basin(road_segment,basins_data),axis=1)
 
-    hospital_exposed_edges = hospital_exposed_edges.to_crs(3857)
+    unique_scenarios = {}
+    for subregion,subregion_exposed in tqdm(exposed_roads.groupby('subregion'),total=len(exposed_roads.groupby('subregion'))):
+        EdgeExposedList = subregion_exposed.id.values
+        edges_to_remove = base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
+        unique_scenarios[subregion] = edges_to_remove
 
-    # Filter out everything below 10 minutes (0.167 hours)
-    exposed_edges_filtered = exposed_edges[exposed_edges['travel_time_impact'] >= 0.167].copy().to_crs(3857)
+    # ###### -10-1: Save the uniqe_scenarios dictionary as a pickle file:
 
-    # Define bins for travel time impact - 10-minute increments, ignoring <10 min
-    # 0.167 hrs = 10 min, 0.333 hrs = 20 min, 0.5 hrs = 30 min, 0.667 hrs = 40 min, 1.0 hrs = 60 min
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
+    filename_unique_scenarios = f'unique_scenarios_{country_iso3}_{Subregion}.pkl'
+    file_path = os.path.join(Factory_criticality_folder, filename_unique_scenarios)
+    with open(file_path, 'wb') as file:
+        pickle.dump(unique_scenarios, file)
 
-    # Create binned column for travel time impact
-    exposed_edges_filtered['impact_class'] = pd.cut(
-        exposed_edges_filtered['travel_time_impact'], 
-        bins=bins, 
-        labels=labels, 
-        include_lowest=True
-    )
+    # ### Step 11: Calculate the flood_statistics_per_scenario and save the results as a csv file
 
-    return exposed_edges_filtered
+    unique_scenarios_Second = {}
 
-
-def plot_road_criticality_hospital_access(base_network: gpd.GeoDataFrame, exposed_edges_filtered: gpd.GeoDataFrame, config: NetworkConfig) -> None:
-    """
-    Compute hospital-related accessibility impacts by identifying road segments
-    whose travel times increase under simulated disruption scenarios.
-
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Road network containing 'osm_id', 'from_id', 'to_id', and geometries.
-    config : NetworkConfig
-        Provides paths to stored hospital disruption results (pickle files).
-
-    Returns
-    -------
-    gpd.GeoDataFrame
-        Road segments with ≥10-minute travel-time increases, classified into
-        impact bins (10-20, 20-30, 30-40, 40-60, 60+ minutes), reprojected to EPSG:3857.
-
-    Notes
-    -----
-    Loads per-basin disruption results, extracts affected edges, computes mean
-    travel-time impact per basin, cleans infinities, and filters out negligible
-    (<10 min) changes.
-    """
-
-    # Create figure with high DPI for crisp visuals
-    fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor='white')
-
-    # Create discrete colormap for travel time impact classes
-    # Using red/orange color scheme - light to dark (low to high impact)
-    labels = ['0-1m', '1-2m', '2-3m', '3-4m', '4m+']
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-    discrete_cmap = ListedColormap(colors)
-
-    # Define line widths for each category (higher impact = thicker lines)
-    width_mapping = {
-        '10-20 min': 1,    # Low impact
-        '20-30 min': 1.5,    # Medium-low impact
-        '30-40 min': 2.0,    # Medium impact
-        '40-60 min': 2.5,    # High impact
-        '60+ min': 3       # Very high impact
-    }
-
-    # Plot baseline network first
-    base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
-
-    # Convert to Web Mercator for plotting with basemap
-    edges_mercator = exposed_edges_filtered.to_crs(3857)
-
-    # Plot each travel time impact class with different colors and widths
-    for i, (category, color) in enumerate(zip(labels, colors)):
-        category_data = edges_mercator[edges_mercator['impact_class'] == category]
+    for subregion, subregion_exposed in tqdm(exposed_roads.groupby('subregion'), total=len(exposed_roads.groupby('subregion'))):
+        EdgeExposedList = subregion_exposed.id.values
+        edges_to_remove2 = base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
+        flooded_edges = base_network.loc[base_network.id.isin(EdgeExposedList)]
         
-        if len(category_data) > 0:
-            category_data.plot(
-                ax=ax,
-                color=color,
-                linewidth=width_mapping[category],
-                alpha=0.9,
-                zorder=5 + i  # Higher impact roads on top
-            )
+        non_empty_values = flooded_edges[flooded_edges['values'].apply(len) > 0]['values']
+        
+        Merged_Values_Column = [item for sublist in non_empty_values for item in sublist]
+        
+        min_value = np.min(Merged_Values_Column) if Merged_Values_Column else np.nan
+        mean_value = np.mean(Merged_Values_Column) if Merged_Values_Column else np.nan
+        max_value = np.max(Merged_Values_Column) if Merged_Values_Column else np.nan
+        
+        unique_scenarios_Second[subregion] = {
+            "min_value": min_value,
+            "mean_value": mean_value,  
+            "max_value": max_value    
+        }
 
-    # Add basemap with optimal styling for PNG
-    cx.add_basemap(
-        ax=ax, 
-        source=cx.providers.CartoDB.Positron, 
-        alpha=0.4,
-        attribution=False
+    flood_statistics_per_scenario = []
+
+    for subregion, values in unique_scenarios_Second.items():
+        flood_statistics_per_scenario.append({
+            "basinID": subregion,
+            "min water depth (m)": values["min_value"],
+            "mean water depth (m)": values["mean_value"],
+            "max water depth (m)": values["max_value"]
+        })
+
+    Flood_Statistics_Per_Scenario = pd.DataFrame(flood_statistics_per_scenario)
+
+    output_csv_file = os.path.join(Factory_criticality_folder, f"{country_iso3}_flood_statistics_per_Basin_{Subregion}_scenario.csv")
+    Flood_Statistics_Per_Scenario.to_csv(output_csv_file, index=False)
+
+    print(Flood_Statistics_Per_Scenario)
+
+    # ### Step 12: Run the new access times (in post-event condition) from factories to all border crossings
+
+    save_new_results = {}
+    sindex_pop = shapely.STRtree(df_worldpop.geometry)
+
+    for BasinID in tqdm(unique_scenarios,total=len(unique_scenarios)):
+        save_new_results[BasinID] = {}
+        
+        try:
+            edges_to_remove = unique_scenarios[BasinID]
+            real_edges_to_remove = [x.index for x in graph.es if x['id'] in edges_to_remove]
+            
+            damaged_graph = graph.copy()
+            damaged_graph.delete_edges(real_edges_to_remove)
+            
+            buffer_zone = basins_data.loc[basins_data.HYBAS_ID == BasinID].to_crs(3857).buffer(50000).to_crs(4326)
+            df_population = df_worldpop.iloc[sindex_pop.query(buffer_zone,predicate='intersects')[1]].copy()
+            df_population_backup = df_population.copy()
+            InitialTotalPopulationPerBasin = df_population_backup['band_data'].sum()
+
+            # Calculate post-flood average access time
+            df_population = get_average_access_time(df_population, Sink, damaged_graph)
+            
+            # Merge with baseline average access time
+            scenario_outcome = df_population.merge(df_worldpop['avg_access_time'], left_index=True, right_index=True)
+            scenario_outcome = scenario_outcome.rename(columns={
+                'avg_access_time_x': 'new_tt',
+                'avg_access_time_y': 'old_tt'
+            })
+            scenario_outcome['Delta'] = scenario_outcome.new_tt - scenario_outcome.old_tt
+
+            scenario_outcome_numeric = scenario_outcome.copy()
+            scenario_outcome_numeric['Delta'] = pd.to_numeric(scenario_outcome_numeric['Delta'], errors='coerce')
+            scenario_outcome_backup = scenario_outcome_numeric[
+                ~(scenario_outcome_numeric['Delta'] == 0) & 
+                ~scenario_outcome_numeric['Delta'].isnull() & 
+                ~np.isinf(scenario_outcome_numeric['Delta'])
+            ].copy()
+        
+            AffectedPopulation = scenario_outcome_backup['band_data'].sum()
+            AffectedPopRatio = AffectedPopulation / InitialTotalPopulationPerBasin
+            
+            # Lost connections: factories where avg access time hits 12 hours (all crossings unreachable)
+            Lost_Connections = scenario_outcome[scenario_outcome['new_tt'] == 12].copy()
+            TotalAffectedPopulation = AffectedPopulation + (Lost_Connections['band_data'].sum())
+            filtered_scenario_outcome_NotNoneInf = scenario_outcome[
+                ~(scenario_outcome['Delta'].isnull()) & 
+                ~(scenario_outcome['new_tt'] == 12)
+            ]
+
+            save_new_results[BasinID] = {
+                "df_population_backup": df_population_backup,
+                "df_population": df_population,
+                "real_edges_to_remove": [x['osm_id'] for x in graph.es if x['id'] in edges_to_remove],
+                "scenario_outcome": scenario_outcome,
+                "Lost_Connections": Lost_Connections,
+                "AffectedPopulation": AffectedPopulation,
+                "TotalAffectedPopulation": TotalAffectedPopulation,
+                "AffectedPopRatio": AffectedPopRatio,
+                "filtered_scenario_outcome_NotNoneInf": filtered_scenario_outcome_NotNoneInf,
+            }
+
+        except Exception as e:
+            save_new_results[BasinID] = {
+                "status": "Error",
+                "reason": str(e),
+                "df_population_backup": None,
+                "df_population": None,
+                "real_edges_to_remove": None,
+                "scenario_outcome": None,
+                "Lost_Connections": None,
+                "AffectedPopulation": None,
+                "TotalAffectedPopulation": None,
+                "AffectedPopRatio": None,
+                "filtered_scenario_outcome_NotNoneInf": None,
+            }
+
+    # ##### -12-1: Save the resulted nested dictionary, save_new_results, as a pickle file:
+
+    filename_nested_Dictionary = f'save_new_results_{country_iso3}_{Subregion}.pkl'
+    file_path = os.path.join(Factory_criticality_folder, filename_nested_Dictionary)
+
+    with open(file_path, 'wb') as file:
+        pickle.dump(save_new_results, file)
+
+    # ### Step 13: Analysis of the results
+
+    print("Analysis completed successfully!")
+
+
+def read_population_data(config):
+
+    DataFrame_StatePop = pd.read_excel(config.Path_SettlementData_Excel)
+
+    Clean_DataFrame_StatePop = DataFrame_StatePop.dropna(subset=["latitude", "longitude", "Total"])
+
+    geometry = [Point(xy) for xy in zip(Clean_DataFrame_StatePop["longitude"], Clean_DataFrame_StatePop["latitude"])]
+
+    df_worldpop = gpd.GeoDataFrame(
+        Clean_DataFrame_StatePop[["Total"]].rename(columns={"Total": "band_data"}),
+        geometry=geometry,
+        crs="EPSG:4326"
     )
 
-    # Enhance the plot styling
-    ax.set_aspect('equal')
-    ax.axis('off')  # Remove axis for cleaner look
+    return df_worldpop
 
-    legend_elements = []
-
-    # Create custom legend in upper right corner
-    legend_elements.extend([Patch(facecolor=colors[i], 
-                                label=f'{labels[i]} delay', 
-                                edgecolor='darkred', 
-                                linewidth=0.5) 
-                        for i in range(len(labels))])
-
-    legend = ax.legend(handles=legend_elements, 
-                    title='Increased Travel Time', 
-                    loc='upper right',
-                    fontsize=10,
-                    title_fontsize=12,
-                    frameon=True,
-                    fancybox=True,
-                    shadow=True,
-                    framealpha=0.9,
-                    facecolor='white',
-                    edgecolor='#cccccc')
-
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
-    plt.savefig(config.figure_path / 'hospital_criticality.png', dpi=200, bbox_inches='tight')
-    if config.show_figures:
-        plt.show()
-
-
-
-def calculate_police_accessibility(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
+def load_and_map_sinks(config: NetworkConfig, nodes: pd.DataFrame, sink_type) -> pd.DataFrame:
     """
-    Calculate police-related road criticality by identifying road segments where
-    disruptions increase travel times from settlements to police stations.
+    Load sink data (firefighters, hospitals or policestations) and map them to the nearest node in the road network
+    
+    Args:
+        config: network configuration, nodes: nodes of the road network, sink_type: identifier for the sink category (firefighters, hospitals or policestations)         
 
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Road network with 'osm_id', endpoints, geometry, and related attributes.
-    config : NetworkConfig
-        Provides paths to police disruption result files (pickled scenario outputs).
-
-    Returns
-    -------
-    gpd.GeoDataFrame
-        Road segments with ≥10-minute increased travel time, reprojected to EPSG:3857
-        and containing a 'travel_time_impact' column.
-
-    Notes
-    -----
-    Loads basin-level scenario results, extracts removed edges, computes average
-    positive travel-time increases, cleans infinite values, and filters out
-    negligible (<10 min) impacts before returning exposed segments.
+    Returns:
+        DataFrame location of sinks and their nearest network node
     """
+    nodes_sindex = shapely.STRtree(nodes.geometry)
 
-    police_results_path = config.accessibility_analysis_path / "police_criticality_results" / "save_new_results_SRB_basins.pkl"
-    police_basins = config.accessibility_analysis_path / "police_criticality_results" / "unique_scenarios_SRB_basins.pkl"
-
-    with open(police_results_path, 'rb') as file:
-        save_new_results = pickle.load(file)
-
-    with open(police_basins, 'rb') as file:
-        save_new_basin_results = pickle.load(file)
-
-    pd.options.mode.chained_assignment = None  # default='warn'
-    pd.set_option('future.no_silent_downcasting', True)
-    river_basins = list(save_new_results.keys())
-
-    collect_removed_edges = []
-
-    for basin in river_basins:
-        scenario_outcome = save_new_results[basin]['scenario_outcome']
-        subset_edges = base_network.loc[base_network.osm_id.astype(str).isin(save_new_results[basin]['real_edges_to_remove'])]
-        subset_edges['travel_time_impact'] = scenario_outcome.loc[scenario_outcome.Delta > 0].replace([np.inf, -np.inf], 1).Delta.mean()
-
-        collect_removed_edges.append(subset_edges)
-    exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[['osm_id','from_id', 'to_id','highway','exposed','geometry','travel_time_impact']]
-
-    police_exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True).set_crs(3857,allow_override=True)
-
-    # Replace inf with a specific value and nan with 0
-    police_exposed_edges['travel_time_impact'] = np.where(
-        np.isinf(police_exposed_edges['travel_time_impact']), 
-        1,  # Replace inf with this value
-        police_exposed_edges['travel_time_impact']
-    )
-
-    police_exposed_edges = police_exposed_edges.to_crs(3857)
-
-    # Filter out everything below 10 minutes (0.167 hours)
-    exposed_edges_filtered = exposed_edges[exposed_edges['travel_time_impact'] >= 0.167].copy().to_crs(3857)
-
-    return exposed_edges_filtered
-
-
-def plot_road_criticality_map_emergency_service(exposed_edges_filtered: gpd.GeoDataFrame, base_network: gpd.GeoDataFrame, config: NetworkConfig, emergency_service: Any) -> None:
-    """
-    Calculate police-related accessibility impacts by identifying road segments
-    that experience increased travel times under simulated disruption scenarios.
-
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Road network with 'osm_id', 'from_id', 'to_id', attributes, and geometry.
-    config : NetworkConfig
-        Provides paths to stored police disruption results (pickled dictionaries).
-
-    Returns
-    -------
-    gpd.GeoDataFrame
-        Road edges with ≥10-minute travel-time increases, reprojected to EPSG:3857
-        and containing the computed 'travel_time_impact' for each exposed segment.
-
-    Notes
-    -----
-    Loads basin-level disruption outputs, extracts affected edges, computes mean
-    travel-time penalties, replaces infinite values, and filters out negligible
-    (<10 min) impacts.
-    """
-
-    #select file name based on emergency service
-    if emergency_service == "firefighters":
-        file_name = 'fire_criticality.png'
-        print("road criticality for firefighter access")
-
-    elif emergency_service == "hospitals":
-        file_name = 'hospital_criticality.png'
-        print("road criticality for hospital access")
-
-    elif emergency_service == "police":
-        file_name = 'police_criticality.png'
-        print("road cricitality for police station access")
-
+    if sink_type == "firefighters":
+        Sink = pd.read_excel(config.firefighters)
+        Sink = Sink.rename(columns={"lon": "Longitude", "lat": "Latitude"})
+    elif sink_type == "hospitals":
+        Sink = pd.read_excel(config.hospitals)
+    elif sink_type == "police":
+        Sink = pd.read_excel(config.police_stations)
+        Sink = Sink.rename(columns={"lon": "Longitude", "lat": "Latitude"})
     else:
         raise ValueError(
-            f"Invalid sink_type '{emergency_service}'. "
+            f"Invalid sink_type '{sink_type}'. "
             "Expected one of: 'firefighters', 'hospitals', 'police'."
         )
 
-    # Define bins for travel time impact - 10-minute increments, ignoring <10 min
-    # 0.167 hrs = 10 min, 0.333 hrs = 20 min, 0.5 hrs = 30 min, 0.667 hrs = 40 min, 1.0 hrs = 60 min
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
+    Sink['geometry'] = Sink.apply(lambda row: Point(row['Longitude'], row['Latitude']), axis=1)
+    Sink['vertex_id'] = Sink.geometry.apply(lambda x: nodes.iloc[nodes_sindex.nearest(x)].vertex_id).values   
 
-    legend_elements = []
+    return Sink
 
-    # Create binned column for travel time impact
-    exposed_edges_filtered['impact_class'] = pd.cut(
-        exposed_edges_filtered['travel_time_impact'], 
-        bins=bins, 
-        labels=labels, 
-        include_lowest=True
-    )
 
-    # Create figure with high DPI for crisp visuals
-    fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor='white')
-
-    # Create discrete colormap for travel time impact classes
-    # Using red/orange color scheme - light to dark (low to high impact)
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-    discrete_cmap = ListedColormap(colors)
-
-    # Define line widths for each category (higher impact = thicker lines)
-    width_mapping = {
-        '10-20 min': 1,    # Low impact
-        '20-30 min': 1.5,    # Medium-low impact
-        '30-40 min': 2.0,    # Medium impact
-        '40-60 min': 2.5,    # High impact
-        '60+ min': 3       # Very high impact
-    }
-
-    # Plot baseline network first
-    base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
-
-    # Convert to Web Mercator for plotting with basemap
-    edges_mercator = exposed_edges_filtered.to_crs(3857)
-
-    # Plot each travel time impact class with different colors and widths
-    for i, (category, color) in enumerate(zip(labels, colors)):
-        category_data = edges_mercator[edges_mercator['impact_class'] == category]
-        
-        if len(category_data) > 0:
-            category_data.plot(
-                ax=ax,
-                color=color,
-                linewidth=width_mapping[category],
-                alpha=0.9,
-                zorder=5 + i  # Higher impact roads on top
-            )
-
-    # Add basemap with optimal styling for PNG
-    cx.add_basemap(
-        ax=ax, 
-        source=cx.providers.CartoDB.Positron, 
-        alpha=0.4,
-        attribution=False
-    )
-
-    # Enhance the plot styling
-    ax.set_aspect('equal')
-    ax.axis('off')  # Remove axis for cleaner look
-
-    # Create custom legend in upper right corner
-    legend_elements.extend([Patch(facecolor=colors[i], 
-                                label=f'{labels[i]} delay', 
-                                edgecolor='darkred', 
-                                linewidth=0.5) 
-                        for i in range(len(labels))])
-
-    legend = ax.legend(handles=legend_elements, 
-                    title='Increased Travel Time', 
-                    loc='upper right',
-                    fontsize=10,
-                    title_fontsize=12,
-                    frameon=True,
-                    fancybox=True,
-                    shadow=True,
-                    framealpha=0.9,
-                    facecolor='white',
-                    edgecolor='#cccccc')
-
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
-    plt.savefig(config.figure_path / file_name, dpi=200, bbox_inches='tight')
-    if config.show_figures:
-        plt.show()
-
-
-
-def calculate_firefigher_accessibility(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
-    """
-    Compute firefighter-related accessibility impacts by identifying road segments
-    where disruption scenarios cause increased travel times.
-
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Road network edges with 'osm_id', 'from_id', 'to_id', attributes, and geometry.
-    config : NetworkConfig
-        Contains paths to pickled firefighter disruption outputs (per-basin results).
-
-    Returns
-    -------
-    gpd.GeoDataFrame
-        Road segments with ≥10-minute travel-time increases, reprojected to EPSG:3857
-        and including the computed 'travel_time_impact' for each affected edge.
-
-    Notes
-    -----
-    Loads basin-level scenario results, extracts removed edges, averages positive
-    travel-time deltas, replaces infinite values, and filters out negligible (<10 min)
-    impacts before returning the exposed subset.
-    """
-
-    fire_results_path = config.accessibility_analysis_path / "fire_criticality_results" / "save_new_results_SRB_basins.pkl"
-    fire_basins = config.accessibility_analysis_path / "fire_criticality_results" / "unique_scenarios_SRB_basins.pkl"
-
-    with open(fire_results_path, 'rb') as file:
-        save_new_results = pickle.load(file)
-
-    with open(fire_basins, 'rb') as file:
-        save_new_basin_results = pickle.load(file)
-
-    pd.options.mode.chained_assignment = None  # default='warn'
-    pd.set_option('future.no_silent_downcasting', True)
-    river_basins = list(save_new_results.keys())
-
-    collect_removed_edges = []
-
-    for basin in river_basins:
-        scenario_outcome = save_new_results[basin]['scenario_outcome']
-        subset_edges = base_network.loc[base_network.osm_id.astype(str).isin(save_new_results[basin]['real_edges_to_remove'])]
-        subset_edges['travel_time_impact'] = scenario_outcome.loc[scenario_outcome.Delta > 0].replace([np.inf, -np.inf], 1).Delta.mean()
-
-        collect_removed_edges.append(subset_edges)
-    exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[['osm_id','from_id', 'to_id','highway','exposed','geometry','travel_time_impact']]
-
-    fire_exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True).set_crs(3857,allow_override=True)
-
-    # Replace inf with a specific value and nan with 0
-    fire_exposed_edges['travel_time_impact'] = np.where(
-        np.isinf(fire_exposed_edges['travel_time_impact']), 
-        1,  # Replace inf with this value
-        fire_exposed_edges['travel_time_impact']
-    )
-
-    fire_exposed_edges = fire_exposed_edges.to_crs(3857)
-
-    # Filter out everything below 10 minutes (0.167 hours)
-    exposed_edges_filtered = exposed_edges[exposed_edges['travel_time_impact'] >= 0.167].copy().to_crs(3857)
-
-    return exposed_edges_filtered
-
-
-def calculate_criticality_factory_access(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> gpd.GeoDataFrame:
-    """
-    Compute factory-related accessibility impacts by identifying road segments where
-    travel times from industrial areas to road border crossings increase under
-    disruption scenarios that remove critical edges.
-
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Road network containing 'osm_id', 'from_id', 'to_id', geometry, and attributes.
-    config : NetworkConfig
-        Provides file paths to stored factory disruption results (pickled dictionaries).
-
-    Returns
-    -------
-    gpd.GeoDataFrame
-        Factory-exposed road segments showing ≥10-minute travel-time increases,
-        with cleaned 'travel_time_impact' values and CRS set to EPSG:3857.
-
-    Notes
-    -----
-    Processes basin-level scenario outputs, filters valid DataFrame outcomes,
-    averages positive travel-time deltas, cleans infinite values, and retains only
-    edges with meaningful (>0.167 h) impacts.
-    """
-    factory_results_path = config.accessibility_analysis_path / "factory_criticality_results" / "save_new_results_SRB_basins.pkl"
-    factory_basins = config.accessibility_analysis_path / "factory_criticality_results" / "unique_scenarios_SRB_basins.pkl"
-
-    with open(factory_results_path, 'rb') as file:
-        save_new_results = pickle.load(file)
-
-    with open(factory_basins, 'rb') as file:
-        save_new_basin_results = pickle.load(file)
-
-    pd.options.mode.chained_assignment = None  # default='warn'
-    pd.set_option('future.no_silent_downcasting', True)
-    river_basins = list(save_new_results.keys())
-
-    collect_removed_edges = []
-
-    for basin in river_basins:
-        if isinstance(save_new_results[basin]['scenario_outcome'],pd.DataFrame):
-            scenario_outcome = save_new_results[basin]['scenario_outcome']
-            subset_edges = base_network.loc[base_network.osm_id.astype(str).isin(save_new_results[basin]['real_edges_to_remove'])]
-            subset_edges['travel_time_impact'] = scenario_outcome.loc[scenario_outcome.Delta > 0].replace([np.inf, -np.inf], 1).Delta.mean()
-        
-            collect_removed_edges.append(subset_edges)
-    exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[['osm_id','from_id', 'to_id','highway','exposed','geometry','travel_time_impact']]
-
-    factory_exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True).set_crs(3857,allow_override=True)
-
-    # Replace inf with a specific value and nan with 0
-    factory_exposed_edges['travel_time_impact'] = np.where(
-        np.isinf(factory_exposed_edges['travel_time_impact']), 
-        1,  # Replace inf with this value
-        factory_exposed_edges['travel_time_impact']
-    )
-
-    factory_exposed_edges = factory_exposed_edges.to_crs(3857)
-
-    # Filter out everything below 10 minutes (0.167 hours)
-    factory_exposed_edges = factory_exposed_edges[factory_exposed_edges['travel_time_impact'] >= 0.167].copy().to_crs(3857)
-
-    return factory_exposed_edges
-
-
-def plot_road_criticality_factories(factory_exposed_edges: gpd.GeoDataFrame, base_network: gpd.GeoDataFrame, config: NetworkConfig) -> None:
-    """
-    Plot road segments whose travel times from industrial areas to road border
-    crossings increase under disruption scenarios, and save the resulting map.
-
-    Parameters
-    ----------
-    factory_exposed_edges : gpd.GeoDataFrame
-        Roads with computed 'travel_time_impact' values for factory accessibility.
-    base_network : gpd.GeoDataFrame
-        Full road network used as a muted background layer.
-    config : NetworkConfig
-        Provides output path (`figure_path`) and `show_figures` toggle.
-
-    Behavior
-    --------
-    Bins travel-time delays into impact classes, draws affected segments with
-    category-specific colors and widths, overlays a basemap, adds a custom legend,
-    and saves 'factory_criticality.png' to the configured directory.
-    """
-    # Define bins for travel time impact - 10-minute increments, ignoring <10 min
-    # 0.167 hrs = 10 min, 0.333 hrs = 20 min, 0.5 hrs = 30 min, 0.667 hrs = 40 min, 1.0 hrs = 60 min
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
-
-    legend_elements = []
-
-    # Create binned column for travel time impact
-    factory_exposed_edges['impact_class'] = pd.cut(
-        factory_exposed_edges['travel_time_impact'], 
-        bins=bins, 
-        labels=labels, 
-        include_lowest=True
-    )
-
-    # Create figure with high DPI for crisp visuals
-    fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor='white')
-
-    # Create discrete colormap for travel time impact classes
-    # Using red/orange color scheme - light to dark (low to high impact)
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-    discrete_cmap = ListedColormap(colors)
-
-    # Define line widths for each category (higher impact = thicker lines)
-    width_mapping = {
-        '10-20 min': 1,    # Low impact
-        '20-30 min': 1.5,    # Medium-low impact
-        '30-40 min': 2.0,    # Medium impact
-        '40-60 min': 2.5,    # High impact
-        '60+ min': 3       # Very high impact
-    }
-
-    # Plot baseline network first
-    base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
-
-    # Convert to Web Mercator for plotting with basemap
-    edges_mercator = factory_exposed_edges.to_crs(3857)
-
-    # Plot each travel time impact class with different colors and widths
-    for i, (category, color) in enumerate(zip(labels, colors)):
-        category_data = edges_mercator[edges_mercator['impact_class'] == category]
-        
-        if len(category_data) > 0:
-            category_data.plot(
-                ax=ax,
-                color=color,
-                linewidth=width_mapping[category],
-                alpha=0.9,
-                zorder=5 + i  # Higher impact roads on top
-            )
-
-    # Add basemap with optimal styling for PNG
-    cx.add_basemap(
-        ax=ax, 
-        source=cx.providers.CartoDB.Positron, 
-        alpha=0.4,
-        attribution=False
-    )
-
-    # Enhance the plot styling
-    ax.set_aspect('equal')
-    ax.axis('off')  # Remove axis for cleaner look
-
-    # Create custom legend in upper right corner
-    legend_elements.extend([Patch(facecolor=colors[i], 
-                                label=f'{labels[i]} delay', 
-                                edgecolor='darkred', 
-                                linewidth=0.5) 
-                        for i in range(len(labels))])
-
-    legend = ax.legend(handles=legend_elements, 
-                    title='Increased Travel Time', 
-                    loc='upper right',
-                    fontsize=10,
-                    title_fontsize=12,
-                    frameon=True,
-                    fancybox=True,
-                    shadow=True,
-                    framealpha=0.9,
-                    facecolor='white',
-                    edgecolor='#cccccc')
-
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
-    plt.savefig(config.figure_path / 'factory_criticality.png', dpi=200, bbox_inches='tight')
-    print("road criticality for factories")
-    if config.show_figures:
-        plt.show()
-
-
-def calculate_road_criticality_agriculture(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> dict:
-    """
-    Calculate road-network criticality for agricultural accessibility by identifying
-    segments where disruptions significantly increase travel times to road borders,
-    ports, or rail terminals.
-
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Complete road network with OSM IDs, attributes, and geometries.
-    config : NetworkConfig
-        Provides paths to agricultural disruption results (pickled dictionaries).
-
-    Returns
-    -------
-    dict
-        A dictionary with keys {'road','port','rail'}, each containing a
-        GeoDataFrame of exposed edges with ≥10-minute travel-time increases and
-        an assigned impact class, or None if no affected edges were found.
-
-    Notes
-    -----
-    Loads basin-level scenario outcomes, filters valid results, computes mean
-    positive delays per sink type, extracts removed edges from the network, cleans
-    infinite values, filters minor impacts, classifies delays into bins, and returns
-    results grouped by sink type.
-    """
-
-    TheFolder = config.accessibility_analysis_path / "allagri_criticality_results"
-
-    # Load results
-    results_path = Path(TheFolder) / "save_new_results_SRB_basins.pkl"
-    basins_path = Path(TheFolder) / "unique_scenarios_SRB_basins.pkl"
-
-    with open(results_path, 'rb') as file:
-        save_new_results = pickle.load(file)
-
-    with open(basins_path, 'rb') as file:
-        unique_scenarios = pickle.load(file)
-
-    pd.options.mode.chained_assignment = None
-    pd.set_option('future.no_silent_downcasting', True)
-
-    river_basins = list(save_new_results.keys())
-
-    # Sink types to visualize (excluding 'all')
-    sink_types = ['road', 'port', 'rail']
+def get_distance_to_nearest_facility(df_population, Sink, graph):
+    df_population = df_population.copy()
+    df_population['closest_sink_vertex_id'] = None
+    df_population['closest_sink_osm_id'] = None
+    df_population['closest_sink_total_fft'] = None
     
-
-    # Define visualization parameters
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-
-    width_mapping = {
-        '10-20 min': 1,
-        '20-30 min': 1.5,
-        '30-40 min': 2.0,
-        '40-60 min': 2.5,
-        '60+ min': 3
-    }
-
-    # =============================================================================
-    # Create exposed edges GeoDataFrame for each sink type
-    # =============================================================================
-
-    exposed_edges_by_type = {}
-
-    for sink_type in sink_types:
-        print(f"Processing: {sink_type}...")
-        
-        collect_removed_edges = []
-        
-        for basin in river_basins:
-            result = save_new_results[basin]
-            
-            if result.get('status') == 'Error' or result.get('df_population') is None:
-                continue
-            
-            df_population = result['df_population']
-            delta_col = f'delta_avg_{sink_type}'
-            
-            if delta_col not in df_population.columns:
-                continue
-            
-            delta_values = df_population[delta_col]
-            valid_deltas = delta_values[(delta_values > 0) & (~np.isinf(delta_values))]
-            
-            if len(valid_deltas) == 0:
-                continue
-            
-            mean_delta = valid_deltas.mean()
-            
-            removed_osm_ids = result['real_edges_to_remove']
-            subset_edges = base_network.loc[
-                base_network.osm_id.astype(str).isin([str(x) for x in removed_osm_ids])
-            ].copy()
-            
-            if len(subset_edges) == 0:
-                continue
-            
-            subset_edges['travel_time_impact'] = mean_delta
-            collect_removed_edges.append(subset_edges)
-        
-        if len(collect_removed_edges) == 0:
-            print(f"  No exposed edges found for {sink_type}")
-            exposed_edges_by_type[sink_type] = None
-            continue
-        
-        # Combine and process
-        exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[
-            ['osm_id', 'from_id', 'to_id', 'highway', 'exposed', 'geometry', 'travel_time_impact']
-        ]
-        
-        exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True)
-        exposed_edges = exposed_edges.set_crs(3857, allow_override=True)
-        
-        # Replace inf with 1 hour
-        exposed_edges['travel_time_impact'] = np.where(
-            np.isinf(exposed_edges['travel_time_impact']),
-            1,
-            exposed_edges['travel_time_impact']
-        )
-        
-        # Filter out < 10 minutes
-        exposed_edges = exposed_edges[exposed_edges['travel_time_impact'] >= 0.167].copy()
-        
-        if len(exposed_edges) == 0:
-            print(f"  No edges with impact >= 10 min for {sink_type}")
-            exposed_edges_by_type[sink_type] = None
-            continue
-        
-        exposed_edges = exposed_edges.to_crs(3857)
-        
-        # Create impact class
-        exposed_edges['impact_class'] = pd.cut(
-            exposed_edges['travel_time_impact'],
-            bins=bins,
-            labels=labels,
-            include_lowest=True
-        )
-        
-        exposed_edges_by_type[sink_type] = exposed_edges
-        print(f"  {len(exposed_edges)} edges")
-
-   
-    # =============================================================================
-    # VISUALIZATION: Travel Time Impact by Sink Type (3x1 Grid)
-    # =============================================================================
-
-    # Create exposed edges GeoDataFrame for each sink type
-    exposed_edges_by_type = {}
-
-    for sink_type in sink_types:
-        print(f"Processing: {sink_type}...")
-        
-        collect_removed_edges = []
-        
-        for basin in river_basins:
-            result = save_new_results[basin]
-            
-            if result.get('status') == 'Error' or result.get('df_population') is None:
-                continue
-            
-            df_population = result['df_population']
-            delta_col = f'delta_avg_{sink_type}'
-            
-            if delta_col not in df_population.columns:
-                continue
-            
-            delta_values = df_population[delta_col]
-            valid_deltas = delta_values[(delta_values > 0) & (~np.isinf(delta_values))]
-            
-            if len(valid_deltas) == 0:
-                continue
-            
-            mean_delta = valid_deltas.mean()
-            
-            removed_osm_ids = result['real_edges_to_remove']
-            subset_edges = base_network.loc[
-                base_network.osm_id.astype(str).isin([str(x) for x in removed_osm_ids])
-            ].copy()
-            
-            if len(subset_edges) == 0:
-                continue
-            
-            subset_edges['travel_time_impact'] = mean_delta
-            collect_removed_edges.append(subset_edges)
-        
-        if len(collect_removed_edges) == 0:
-            print(f"  No exposed edges found for {sink_type}")
-            exposed_edges_by_type[sink_type] = None
-            continue
-        
-        # Combine and process
-        exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[
-            ['osm_id', 'from_id', 'to_id', 'highway', 'exposed', 'geometry', 'travel_time_impact']
-        ]
-        
-        exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True)
-        exposed_edges = exposed_edges.set_crs(3857, allow_override=True)
-        
-        # Replace inf with 1 hour
-        exposed_edges['travel_time_impact'] = np.where(
-            np.isinf(exposed_edges['travel_time_impact']),
-            1,
-            exposed_edges['travel_time_impact']
-        )
-        
-        # Filter out < 10 minutes
-        exposed_edges = exposed_edges[exposed_edges['travel_time_impact'] >= 0.167].copy()
-        
-        if len(exposed_edges) == 0:
-            print(f"  No edges with impact >= 10 min for {sink_type}")
-            exposed_edges_by_type[sink_type] = None
-            continue
-        
-        exposed_edges = exposed_edges.to_crs(3857)
-        
-        # Create impact class
-        exposed_edges['impact_class'] = pd.cut(
-            exposed_edges['travel_time_impact'],
-            bins=bins,
-            labels=labels,
-            include_lowest=True
-        )
-        
-        exposed_edges_by_type[sink_type] = exposed_edges
-        print(f"  {len(exposed_edges)} edges")
-
-
-    return exposed_edges_by_type
-
-
-
-# =============================================================================
-# Create 3x1 figure
-# =============================================================================
-
-def plot_panel(ax: Any, gdf: gpd.GeoDataFrame, letter: Any, title: Any, base_network: gpd.GeoDataFrame) -> Any:
-    """
-    Plot a single panel of agricultural road-criticality results by drawing exposed
-    road segments colored and weighted by travel-time impact, on top of a muted
-    baseline road network.
-
-    Parameters
-    ----------
-    ax : matplotlib Axes
-        Target axes object to draw the panel.
-    gdf : gpd.GeoDataFrame or None
-        Exposed edges with an 'impact_class' column; skipped if None or empty.
-    letter : str
-        Panel label (e.g., 'A', 'B', 'C') drawn in the upper left.
-    title : str
-        (Optional) Panel title; currently unused but available for consistency.
-    base_network : gpd.GeoDataFrame
-        Background road network rendered in light grey.
-
-    Behavior
-    --------
-    Plots the baseline network, overlays exposed edges by impact class with
-    category-specific colors and widths, adds a panel label, hides axes, and
-    adds a CartoDB Positron basemap.
-    """
-    # Plot baseline network first (background)
-    base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
-
-    # Define visualization parameters
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-
-    width_mapping = {
-        '10-20 min': 1,
-        '20-30 min': 1.5,
-        '30-40 min': 2.0,
-        '40-60 min': 2.5,
-        '60+ min': 3
-    }
+    unique_pop_vertex_ids = df_population['vertex_id'].unique()
+    unique_sink_vertex_ids = Sink['vertex_id'].unique()
     
-    # Plot exposed edges by impact class
-    if gdf is not None and len(gdf) > 0:
-        for category, color in zip(labels, colors):
-            subset = gdf[gdf['impact_class'] == category]
-            if len(subset) > 0:
-                subset.plot(ax=ax, color=color, linewidth=width_mapping[category], alpha=0.9)
+    sink_lookup = {}
+    for _, row in Sink.iterrows():
+        sink_lookup[row['vertex_id']] = row['i.d.']
+
+    distance_matrix = np.array(graph.distances(
+        source=unique_pop_vertex_ids,
+        target=unique_sink_vertex_ids, 
+        weights='fft'
+    ))
     
-    ax.axis('off')
+    vertex_to_closest_sink = {}
     
-    # Add panel letter
-    ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=20,
-            fontweight='bold', verticalalignment='top',
-            bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
-    
-    # Add title
-    #ax.set_title(title, fontsize=12, fontweight='bold', pad=10)
-    
-    # Add basemap
-    cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, attribution=False)
-
-
-def plot_agriculture_average_increased_travel_time(exposed_edges_by_type: gpd.GeoDataFrame, base_network: gpd.GeoDataFrame, config: NetworkConfig) -> None:
-    """
-    Plot three side-by-side panels showing average increased travel time from
-    agricultural areas to road border crossings, ports, and rail terminals.
-
-    Parameters
-    ----------
-    exposed_edges_by_type : dict
-        Dictionary containing GeoDataFrames of exposed edges for keys 'road',
-        'port', and 'rail', each with an 'impact_class' column.
-    base_network : gpd.GeoDataFrame
-        Full road network drawn as a light background layer.
-    config : NetworkConfig
-        Provides output directory (`figure_path`) and display settings.
-
-    Behavior
-    --------
-    Uses `plot_panel` to render each sink type in a 3*1 layout, adds a shared legend
-    for delay classes, saves the figure as 'SRB_agri_criticality_avg_3x1.png',
-    and optionally displays it.
-    """
-
-    fig, axes = plt.subplots(1, 3, figsize=(15, 7))
-
-    # Define visualization parameters
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-
-    sink_titles = {
-        'road': 'Road Border Crossings',
-        'port': 'Ports',
-        'rail': 'Rail Terminals'
-    }
-
-    # Plot panels
-    plot_panel(axes[0], exposed_edges_by_type['road'], 'A', sink_titles['road'], base_network)
-    plot_panel(axes[1], exposed_edges_by_type['port'], 'B', sink_titles['port'], base_network)
-    plot_panel(axes[2], exposed_edges_by_type['rail'], 'C', sink_titles['rail'], base_network)
-
-    # Shared legend at bottom
-    legend_handles = [
-        Patch(facecolor=colors[i], label=f'{labels[i]}', edgecolor='darkred', linewidth=0.5)
-        for i in range(len(labels))
-    ]
-
-    fig.legend(
-        handles=legend_handles,
-        title='Average Increased Travel Time',
-        loc='lower center',
-        bbox_to_anchor=(0.5, -0.02),
-        ncol=len(labels),
-        fontsize=14,
-        title_fontsize=16,
-        frameon=True,
-        fancybox=True,
-        framealpha=0.9
-    )
-
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.12)
-
-    # Save figure
-    output_fig_path = config.figure_path / f'SRB_agri_criticality_avg_3x1.png'
-    plt.savefig(output_fig_path, dpi=150, bbox_inches='tight')
-    print("Average increased travel time from agricultural areas to A: road borders, B: ports, C: rail terminals.")
-    if config.show_figures:
-        plt.show()
-
-
-
-def plot_agriculture_increased_travel_time_to_nearest(base_network: gpd.GeoDataFrame, config:NetworkConfig) -> None:
-    """
-    Plot increased travel times from agricultural areas to the *nearest* road border
-    crossings, ports, and rail terminals, and save the resulting 3-panel figure.
-
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Complete road network drawn in the background of each panel.
-    config : NetworkConfig
-        Provides paths to disruption-result pickle files and output figure directory.
-
-    Returns
-    -------
-    None
-        Outputs 'SRB_agri_criticality_nearest_3x1.png' and optionally displays it.
-
-    Behavior
-    --------
-    Loads per-basin disruption outcomes, computes mean positive delays for the
-    nearest sink type (road/port/rail), extracts affected edges, filters <10-min
-    impacts, assigns delay classes, renders a 3x1 map layout, adds a shared legend,
-    and saves the final figure.
-    """
-    # =============================================================================
-    # VISUALIZATION: Travel Time Impact by Sink Type (3x1 Grid)
-    # =============================================================================
-
-    # Sink types to visualize (excluding 'all')
-    sink_types = ['road', 'port', 'rail']
-    sink_titles = {
-        'road': 'Road Border Crossings',
-        'port': 'Ports',
-        'rail': 'Rail Terminals'
-    }
-
-    # Define visualization parameters
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-
-    width_mapping = {
-        '10-20 min': 1,
-        '20-30 min': 1.5,
-        '30-40 min': 2.0,
-        '40-60 min': 2.5,
-        '60+ min': 3
-    }
-
-    # =============================================================================
-    # Create exposed edges GeoDataFrame for each sink type
-    # =============================================================================
-
-    TheFolder = config.accessibility_analysis_path / "allagri_criticality_results"
-    results_path = Path(TheFolder) / "save_new_results_SRB_basins.pkl"
-
-    with open(results_path, 'rb') as file:
-        save_new_results = pickle.load(file)
-
-    pd.options.mode.chained_assignment = None
-    pd.set_option('future.no_silent_downcasting', True)
-    river_basins = list(save_new_results.keys())
-
-    exposed_edges_by_type = {}
-
-    for sink_type in sink_types:
-        print(f"Processing: {sink_type}...")
+    for i, pop_vertex_id in enumerate(unique_pop_vertex_ids):
+        distances_to_sinks = distance_matrix[i, :]
         
-        collect_removed_edges = []
+        min_sink_idx = np.argmin(distances_to_sinks)
+        min_distance = distances_to_sinks[min_sink_idx]
         
-        for basin in river_basins:
-            result = save_new_results[basin]
-            
-            if result.get('status') == 'Error' or result.get('df_population') is None:
-                continue
-            
-            df_population = result['df_population']
-            delta_col = f'delta_nearest_{sink_type}'
-            
-            if delta_col not in df_population.columns:
-                continue
-            
-            delta_values = df_population[delta_col]
-            valid_deltas = delta_values[(delta_values > 0) & (~np.isinf(delta_values))]
-            
-            if len(valid_deltas) == 0:
-                continue
-            
-            mean_delta = valid_deltas.mean()
-            
-            removed_osm_ids = result['real_edges_to_remove']
-            subset_edges = base_network.loc[
-                base_network.osm_id.astype(str).isin([str(x) for x in removed_osm_ids])
-            ].copy()
-            
-            if len(subset_edges) == 0:
-                continue
-            
-            subset_edges['travel_time_impact'] = mean_delta
-            collect_removed_edges.append(subset_edges)
-        
-        if len(collect_removed_edges) == 0:
-            print(f"  No exposed edges found for {sink_type}")
-            exposed_edges_by_type[sink_type] = None
-            continue
-        
-        # Combine and process
-        exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[
-            ['osm_id', 'from_id', 'to_id', 'highway', 'exposed', 'geometry', 'travel_time_impact']
-        ]
-        
-        exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True)
-        exposed_edges = exposed_edges.set_crs(3857, allow_override=True)
-        
-        # Replace inf with 1 hour
-        exposed_edges['travel_time_impact'] = np.where(
-            np.isinf(exposed_edges['travel_time_impact']),
-            1,
-            exposed_edges['travel_time_impact']
-        )
-        
-        # Filter out < 10 minutes
-        exposed_edges = exposed_edges[exposed_edges['travel_time_impact'] >= 0.167].copy()
-        
-        if len(exposed_edges) == 0:
-            print(f"  No edges with impact >= 10 min for {sink_type}")
-            exposed_edges_by_type[sink_type] = None
-            continue
-        
-        exposed_edges = exposed_edges.to_crs(3857)
-        
-        # Create impact class
-        exposed_edges['impact_class'] = pd.cut(
-            exposed_edges['travel_time_impact'],
-            bins=bins,
-            labels=labels,
-            include_lowest=True
-        )
-        
-        exposed_edges_by_type[sink_type] = exposed_edges
-        print(f"  {len(exposed_edges)} edges")
-
-
-
-    
-    # =============================================================================
-    # Create 3x1 figure
-    # =============================================================================
-
-    exposed_edges_by_type['road'].to_parquet(config.intermediate_results_path / 'road_impacts.parquet')
-    exposed_edges_by_type['rail'].to_parquet(config.intermediate_results_path / 'rail_impacts.parquet')
-    exposed_edges_by_type['port'].to_parquet(config.intermediate_results_path / 'port_impacts.parquet')
-
-    fig, axes = plt.subplots(1, 3, figsize=(15, 7))
-
-    def plot_panel(ax: Any, gdf: gpd.GeoDataFrame, letter: Any, title: Any):
-        # Plot baseline network first (background)
-        base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
-        
-        # Plot exposed edges by impact class
-        if gdf is not None and len(gdf) > 0:
-            for category, color in zip(labels, colors):
-                subset = gdf[gdf['impact_class'] == category]
-                if len(subset) > 0:
-                    subset.plot(ax=ax, color=color, linewidth=width_mapping[category], alpha=0.9)
-        
-        ax.axis('off')
-        
-        # Add panel letter
-        ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=20,
-                fontweight='bold', verticalalignment='top',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
-        
-        # Add title
-        #ax.set_title(title, fontsize=14, fontweight='bold', pad=10)
-        
-        # Add basemap
-        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron,attribution=False)
-
-    # Plot panels
-    plot_panel(axes[0], exposed_edges_by_type['road'], 'A', sink_titles['road'])
-    plot_panel(axes[1], exposed_edges_by_type['port'], 'B', sink_titles['port'])
-    plot_panel(axes[2], exposed_edges_by_type['rail'], 'C', sink_titles['rail'])
-
-    # Shared legend at bottom
-    legend_handles = [
-        Patch(facecolor=colors[i], label=f'{labels[i]}', edgecolor='darkred', linewidth=0.5)
-        for i in range(len(labels))
-    ]
-
-    fig.legend(
-        handles=legend_handles,
-        title='Increased Travel Time To Nearest',
-        loc='lower center',
-        bbox_to_anchor=(0.5, -0.02),
-        ncol=len(labels),
-        fontsize=14,
-        title_fontsize=16,
-        frameon=True,
-        fancybox=True,
-        framealpha=0.9
-    )
-
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.12)
-
-    # Save figure
-    output_fig_path = config.figure_path / f'SRB_agri_criticality_nearest_3x1.png'
-    plt.savefig(output_fig_path, dpi=150, bbox_inches='tight')
-    print("Increased travel time from agricultural areas to nearest A: road border, B: port, C: rail terminal.")
-    if config.show_figures:
-        plt.show()
-
-
-def plot_and_save_combined_results(base_network: gpd.GeoDataFrame, config: NetworkConfig) -> None:
-    """
-    Generate a combined 2x2 criticality map for hospitals, factories, police, and
-    fire stations, and compute summary statistics for each service.
-
-    Parameters
-    ----------
-    base_network : gpd.GeoDataFrame
-        Complete road network plotted as a background layer in all panels.
-    config : NetworkConfig
-        Provides paths to criticality result files, output locations for figures
-        and parquet exports, and display settings.
-
-    Behavior
-    --------
-    Loads disruption outputs for four services, extracts and classifies road
-    segments with ≥10-minute travel-time increases, plots them in a 2x2 layout with
-    a shared legend, saves 'criticality_2x2.png', exports impact tables to Parquet,
-    and computes key metrics (mean delay, median delay, class shares, total km).
-    """
-    # ============================
-    # 3. Common settings
-    # ============================
-    bins = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
-    labels = ['10-20 min', '20-30 min', '30-40 min', '40-60 min', '60+ min']
-    colors = ['#fcbba1', '#fc9272', '#ef3b2c', '#cb181d', '#a50f15']
-    width_mapping = {
-        '10-20 min': 1.0,
-        '20-30 min': 1.5,
-        '30-40 min': 2.0,
-        '40-60 min': 2.5,
-        '60+ min': 3.0
-    }
-
-    # ============================
-    # 4. Load and process each service
-    # ============================
-
-    def process_service(results_path, basins_path):
-        with open(results_path, 'rb') as f:
-            save_new_results = pickle.load(f)
-        with open(basins_path, 'rb') as f:
-            save_new_basin_results = pickle.load(f)
-
-        river_basins = list(save_new_results.keys())
-        collect_removed_edges = []
-
-        for basin in river_basins:
-            scenario_outcome = save_new_results[basin]['scenario_outcome']
-            if isinstance(scenario_outcome, pd.DataFrame):
-                subset_edges = base_network.loc[
-                    base_network.osm_id.astype(str).isin(save_new_results[basin]['real_edges_to_remove'])
-                ].copy()
-                subset_edges['travel_time_impact'] = scenario_outcome.loc[
-                    scenario_outcome.Delta > 0
-                ].replace([np.inf, -np.inf], 1).Delta.mean()
-                collect_removed_edges.append(subset_edges)
-
-        exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[[
-            'osm_id','from_id','to_id','highway','exposed','geometry','travel_time_impact'
-        ]]
-
-        exposed_edges = exposed_edges.loc[exposed_edges.exposed == True].reset_index(drop=True).set_crs(3857, allow_override=True)
-        exposed_edges['travel_time_impact'] = np.where(
-            np.isinf(exposed_edges['travel_time_impact']), 1, exposed_edges['travel_time_impact']
-        )
-        exposed_edges = exposed_edges.to_crs(3857)
-        exposed_edges = exposed_edges[exposed_edges['travel_time_impact'] >= 0.167].copy()
-
-        exposed_edges['impact_class'] = pd.cut(
-            exposed_edges['travel_time_impact'], bins=bins, labels=labels, include_lowest=True
-        )
-
-        return exposed_edges
-
-    # Paths for each service
-    hospital_results_path = config.accessibility_analysis_path / "healthcare_criticality_results" / "save_new_results_SRB_basins.pkl"
-    hospital_basins_path = config.accessibility_analysis_path / "healthcare_criticality_results" / "unique_scenarios_SRB_basins.pkl"
-
-    factory_results_path = config.accessibility_analysis_path / "factory_criticality_results" / "save_new_results_SRB_basins.pkl"
-    factory_basins_path = config.accessibility_analysis_path / "factory_criticality_results" / "unique_scenarios_SRB_basins.pkl"
-
-    police_results_path = config.accessibility_analysis_path / "police_criticality_results" / "save_new_results_SRB_basins.pkl"
-    police_basins_path = config.accessibility_analysis_path / "police_criticality_results" / "unique_scenarios_SRB_basins.pkl"
-
-    fire_results_path = config.accessibility_analysis_path / "fire_criticality_results" / "save_new_results_SRB_basins.pkl"
-    fire_basins_path = config.accessibility_analysis_path / "fire_criticality_results" / "unique_scenarios_SRB_basins.pkl"
-
-    # Process all
-    hospital_exposed_edges = process_service(hospital_results_path, hospital_basins_path)
-    factory_exposed_edges = process_service(factory_results_path, factory_basins_path)
-    police_exposed_edges = process_service(police_results_path, police_basins_path)
-    fire_exposed_edges = process_service(fire_results_path, fire_basins_path)
-
-
-
-    fig, axes = plt.subplots(2, 2, figsize=(10, 14))
-
-    def plot_panel(ax, gdf, letter):
-        #base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
-        for category, color in zip(labels, colors):
-            subset = gdf[gdf['impact_class'] == category]
-            if len(subset) > 0:
-                subset.plot(ax=ax, color=color, linewidth=width_mapping[category], alpha=0.9)
-        
-        base_network.plot(ax=ax, linewidth=0.1, color='lightgrey', alpha=0.5)
-
-        # ax.set_xlim(*xlim)
-        # ax.set_ylim(*ylim)
-        ax.axis('off')
-        ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=20,
-                fontweight='bold', verticalalignment='top',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
-        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
-
-    # Panels
-    plot_panel(axes[0, 0], hospital_exposed_edges, 'A')  # Hospital
-    plot_panel(axes[0, 1], factory_exposed_edges, 'B')   # Factory
-    plot_panel(axes[1, 0], police_exposed_edges, 'C')    # Police
-    plot_panel(axes[1, 1], fire_exposed_edges, 'D')      # Fire
-
-    # Shared legend
-    legend_handles = [Patch(facecolor=colors[i], label=f'{labels[i]} delay', edgecolor='darkred', linewidth=0.5)
-                    for i in range(len(labels))]
-
-
-    fig.legend(
-        handles=legend_handles,
-        title='Increased travel time',
-        loc='lower center',           # anchor point on the legend box
-        bbox_to_anchor=(0.5, 0.05),  # (x, y) in figure coordinates
-        ncol=len(labels),
-        fontsize=10,
-        title_fontsize=12,
-        frameon=True,
-        fancybox=True,
-        framealpha=0.9
-    )
-
-    plt.subplots_adjust(wspace=0.05, hspace=0.05)
-    plt.savefig(config.figure_path / "criticality_2x2.png", dpi=150, bbox_inches='tight')
-    print("combined results for increased travel time to A: hospitals, B: factories, C: police stations, D; fire stations.")
-    if config.show_figures:
-        plt.show()
-
-
-    # Helper to compute a few compact facts per panel
-    def panel_facts(gdf):
-        if gdf is None or len(gdf) == 0:
-            return {
-                "mean_min": np.nan,
-                "median_min": np.nan,
-                "share_60p": 0.0,
-                "share_20_60": 0.0,
-                "share_10_20": 0.0,
-                "total_km": np.nan
-            }
-        delays_h = gdf["travel_time_impact"].dropna()
-        mean_min = float(delays_h.mean() * 60.0)
-        median_min = float(delays_h.median() * 60.0)
-
-        # Shares by class
-        counts = gdf["impact_class"].value_counts()
-        total = counts.sum() if counts.sum() > 0 else 1
-        get = lambda k: float(counts.get(k, 0) / total * 100.0)
-
-        share_60p = get("60+ min")
-        share_20_60 = get("20-30 min") + get("30-40 min") + get("40-60 min")
-        share_10_20 = get("10-20 min")
-
-        # Length in kilometers
-        if "geometry" in gdf.columns and gdf.geometry.notna().any():
-            total_km = float(gdf.geometry.length.sum() / 1000.0)
+        if np.isinf(min_distance):
+            vertex_to_closest_sink[pop_vertex_id] = (None, None, float('inf'))
         else:
-            total_km = np.nan
+            closest_sink_vertex_id = unique_sink_vertex_ids[min_sink_idx]
+            closest_sink_osm_id = sink_lookup[closest_sink_vertex_id]
+            vertex_to_closest_sink[pop_vertex_id] = (
+                closest_sink_vertex_id,
+                closest_sink_osm_id, 
+                min_distance
+            )
+    
+    for idx, row in df_population.iterrows():
+        vertex_id = row['vertex_id']
+        closest_sink_vertex_id, closest_sink_osm_id, closest_sink_total_fft = vertex_to_closest_sink[vertex_id]
+        
+        df_population.at[idx, 'closest_sink_vertex_id'] = closest_sink_vertex_id
+        df_population.at[idx, 'closest_sink_osm_id'] = closest_sink_osm_id
+        df_population.at[idx, 'closest_sink_total_fft'] = closest_sink_total_fft
+    
+    return df_population
 
-        return {
-            "mean_min": mean_min,
-            "median_min": median_min,
-            "share_60p": share_60p,
-            "share_20_60": share_20_60,
-            "share_10_20": share_10_20,
-            "total_km": total_km
+def flood_exposure_emergency_service_accessibility(df_worldpop, Sink, TheFolder, basins_data):
+
+    
+    # ## Step 10: Identify exposed assets
+
+    exposed_roads = base_network[base_network.exposed].reset_index(drop=True)
+
+    tqdm.pandas(desc='get basin')    
+    exposed_roads['subregion'] = exposed_roads.progress_apply(lambda road_segment: _get_river_basin(road_segment,basins_data),axis=1)
+
+    unique_scenarios = {}
+    for subregion,subregion_exposed in tqdm(exposed_roads.groupby('subregion'),total=len(exposed_roads.groupby('subregion'))):
+        EdgeExposedList = subregion_exposed.id.values
+        edges_to_remove = base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
+        unique_scenarios[subregion] = edges_to_remove
+
+    # ###### -10-1: Save the uniqe_scenarios dictionary as a pickle file:
+
+    filename_unique_scenarios = f'unique_scenarios_{country_iso3}_{Subregion}.pkl'
+    file_path = os.path.join(TheFolder, filename_unique_scenarios)
+    with open(file_path, 'wb') as file:
+        pickle.dump(unique_scenarios, file)
+
+    # ### Step 11: Calculate the flood_statistics_per_scenario and save the results as a csv file
+
+    unique_scenarios_Second = {}
+
+    for subregion, subregion_exposed in tqdm(exposed_roads.groupby('subregion'), total=len(exposed_roads.groupby('subregion'))):
+        EdgeExposedList = subregion_exposed.id.values
+        edges_to_remove2 = base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
+        flooded_edges = base_network.loc[base_network.id.isin(EdgeExposedList)]
+        
+        non_empty_values = flooded_edges[flooded_edges['values'].apply(len) > 0]['values']
+        
+        Merged_Values_Column = [item for sublist in non_empty_values for item in sublist]
+        
+        min_value = np.min(Merged_Values_Column) if Merged_Values_Column else np.nan
+        mean_value = np.mean(Merged_Values_Column) if Merged_Values_Column else np.nan
+        max_value = np.max(Merged_Values_Column) if Merged_Values_Column else np.nan
+        
+        unique_scenarios_Second[subregion] = {
+            "min_value": min_value,
+            "mean_value": mean_value,  
+            "max_value": max_value    
         }
 
-    A = panel_facts(hospital_exposed_edges)  # Figure 25.A
-    B = panel_facts(factory_exposed_edges)   # Figure 25.B
-    C = panel_facts(police_exposed_edges)    # Figure 25.C
-    D = panel_facts(fire_exposed_edges)      # Figure 25.D
+    flood_statistics_per_scenario = []
 
-    # Combined quick facts
-    frames = [hospital_exposed_edges, factory_exposed_edges, police_exposed_edges, fire_exposed_edges]
-    frames = [f for f in frames if f is not None and len(f) > 0]
-    if frames:
-        all_delays_h = pd.concat([f["travel_time_impact"] for f in frames]).dropna()
-        mean_all_min = float(all_delays_h.mean() * 60.0)
-        median_all_min = float(all_delays_h.median() * 60.0)
-        total_all_km = float(pd.concat(frames).geometry.length.sum() / 1000.0)
-    else:
-        mean_all_min = np.nan
-        median_all_min = np.nan
-        total_all_km = np.nan
+    for subregion, values in unique_scenarios_Second.items():
+        flood_statistics_per_scenario.append({
+            "basinID": subregion,
+            "min water depth (m)": values["min_value"],
+            "mean water depth (m)": values["mean_value"],
+            "max water depth (m)": values["max_value"]
+        })
 
-    # Round nicely for readability
-    def r(x, nd=0):
-        return int(round(x)) if nd == 0 and pd.notna(x) else (round(x, nd) if pd.notna(x) else None)
+    Flood_Statistics_Per_Scenario = pd.DataFrame(flood_statistics_per_scenario)
 
+    output_csv_file = os.path.join(TheFolder, f"{country_iso3}_flood_statistics_per_Basin_{Subregion}_scenario.csv")
+    Flood_Statistics_Per_Scenario.to_csv(output_csv_file, index=False)
 
-    hospital_exposed_edges.to_parquet(config.intermediate_results_path / 'hospital_impacts.parquet')
-    factory_exposed_edges.to_parquet(config.intermediate_results_path / 'factory_impacts.parquet')
-    police_exposed_edges.to_parquet(config.intermediate_results_path / 'police_impacts.parquet')
-    fire_exposed_edges.to_parquet(config.intermediate_results_path / 'fire_impacts.parquet')
+    print(Flood_Statistics_Per_Scenario)
+
+    # ### Step 12: Run the new access times (in post-event condition) from populaiton points to the nearest health facilities
+
+    save_new_results = {}
+    sindex_pop = shapely.STRtree(df_worldpop.geometry)
+    for BasinID in tqdm(unique_scenarios,total=len(unique_scenarios)):
+        save_new_results[BasinID] = {}
+        
+        try:
+            edges_to_remove = unique_scenarios[BasinID]
+            real_edges_to_remove = [x.index  for x in graph.es if x['id'] in edges_to_remove]
+            
+            damaged_graph = graph.copy()
+            damaged_graph.delete_edges(real_edges_to_remove)
+            
+            buffer_zone = basins_data.loc[basins_data.HYBAS_ID == BasinID].to_crs(3857).buffer(50000).to_crs(4326)
+            df_population = df_worldpop.iloc[sindex_pop.query(buffer_zone,predicate='intersects')[1]].copy()
+            df_population_backup=df_population.copy()
+            InitialTotalPopulationPerBasin=df_population_backup['band_data'].sum()
+
+            df_population=get_distance_to_nearest_facility(df_population,Sink,damaged_graph)
+            
+            scenario_outcome = df_population.merge(df_worldpop['closest_sink_total_fft'],left_index=True,right_index=True)
+            scenario_outcome = scenario_outcome.rename(columns={'closest_sink_total_fft_x': 'new_tt' ,
+                                                'closest_sink_total_fft_y': 'old_tt' })
+            scenario_outcome['Delta']  = scenario_outcome.new_tt - scenario_outcome.old_tt
+
+            scenario_outcome_numeric = scenario_outcome.copy()
+            scenario_outcome_numeric['Delta'] = pd.to_numeric(scenario_outcome_numeric['Delta'], errors='coerce')
+            scenario_outcome_backup = scenario_outcome_numeric[~(scenario_outcome_numeric['Delta'] == 0) & ~scenario_outcome_numeric['Delta'].isnull() & 
+                                                               ~np.isinf(scenario_outcome_numeric['Delta'])].copy()
+        
+            AffectedPopulation = scenario_outcome_backup['band_data'].sum()
+            AffectedPopRatio=AffectedPopulation/InitialTotalPopulationPerBasin
+            
+            Lost_Connections = scenario_outcome[scenario_outcome['Delta'] == np.inf].copy()
+            TotalAffectedPopulation= AffectedPopulation+ (Lost_Connections['band_data'].sum())
+            filtered_scenario_outcome_NotNoneInf = scenario_outcome[~(scenario_outcome['Delta'].isnull() | (scenario_outcome['Delta'] == np.inf))]
+
+            save_new_results[BasinID] = {
+                "df_population_backup": df_population_backup,
+                "df_population": df_population,
+                "real_edges_to_remove": [x['osm_id']  for x in graph.es if x['id'] in edges_to_remove],
+                "scenario_outcome":scenario_outcome,
+                "Lost_Connections":Lost_Connections,
+                "AffectedPopulation":AffectedPopulation,
+                "TotalAffectedPopulation":TotalAffectedPopulation,
+                "AffectedPopRatio":AffectedPopRatio,
+                "filtered_scenario_outcome_NotNoneInf":filtered_scenario_outcome_NotNoneInf,
+            }
+
+        except Exception as e:
+            save_new_results[BasinID] = {
+                "status": "Error",
+                "reason": str(e),
+                "df_population_backup": None,
+                "df_population": None,
+                "real_edges_to_remove": None,
+                "scenario_outcome": None,
+                "Lost_Connections":None,
+                "AffectedPopulation":None,
+                "TotalAffectedPopulation":None,
+                "AffectedPopRatio":None,
+                "filtered_scenario_outcome_NotNoneInf":None,
+            }
+
+    # ##### -12-1: Save the resulted nested dictionary, save_new_results, as a pickle file:
+
+    filename_nested_Dictionary = f'save_new_results_{country_iso3}_{Subregion}.pkl'
+
+    file_path = os.path.join(TheFolder, filename_nested_Dictionary)
+
+    with open(file_path, 'wb') as file:
+        pickle.dump(save_new_results, file)
+
+    # ### Step 13: Analysis of the resutls
+
+    # #### 13-1: To rank the scenarios and get the top 3 with the highest imapct:
+
+    print("Analysis completed successfully!")
+
+def read_agri_data(config: NetworkConfig) -> gpd.GeoDataFrame:
+    # ### Step 4: Read world population data
+
+    # reading the Excel file
+    DataFrame_StatePop = pd.read_excel(config.Path_AgriFile)
+
+    # to keep only rows with valid coordinates and Number of AgriLands
+    Clean_DataFrame_Agri_Statistics = DataFrame_StatePop.dropna(subset=["latitude", "longitude","Utilized agricultural land (UAL)"])
+ 
+    # to make point geometry
+    geometry = [Point(xy) for xy in zip(Clean_DataFrame_Agri_Statistics["longitude"], Clean_DataFrame_Agri_Statistics["latitude"])]
+
+    # build GeoDataFrame matching df_worldpop structure
+    df_worldpop = gpd.GeoDataFrame(
+        Clean_DataFrame_Agri_Statistics[["Utilized agricultural land (UAL)"]].rename(columns={"Utilized agricultural land (UAL)": "band_data"}),
+        geometry=geometry,
+        crs="EPSG:4326"  # longitude/latitude WGS84
+    )
+
+    return df_worldpop
+
+def load_sinks(config: NetworkConfig, nodes: pd.DataFrame) -> pd.DataFrame:
+    """
+    Load border crossings (Sinks) from Excel file.
     
+    Args:
+        config: Network configuration
+        
+    Returns:
+        Pandas DataFrame with border crossings
+    """
 
+    nodes_sindex = shapely.STRtree(nodes.geometry)
+
+    Sinks = pd.read_excel(config.path_to_Sinks)
+    Sinks = Sinks.rename(columns={"LON": "Longitude", "LAT": "Latitude", "TYPE OF\nTRAFFIC": "type"})
+    Sinks['geometry'] = Sinks.apply(lambda row: Point(row['Longitude'], row['Latitude']), axis=1)
+    Sinks['vertex_id'] = Sinks.geometry.apply(lambda x: nodes.iloc[nodes_sindex.nearest(x)].vertex_id).values
+
+    # Ensure 'name' column exists for compatibility with get_distance_to_nearest_facility
+    if 'name' not in Sinks.columns:
+        Sinks['name'] = Sinks.index.astype(str)  # or use another identifier column
+
+    # Split by type
+    Sinks_road = Sinks[Sinks['type'] == 'road'].copy()
+    Sinks_port = Sinks[Sinks['type'] == 'port'].copy()
+    Sinks_rail = Sinks[Sinks['type'] == 'rail'].copy()
+
+    # Create sinks dictionary for easy iteration
+    sinks_dict = {
+        'road': Sinks_road,
+        'port': Sinks_port,
+        'rail': Sinks_rail,
+        'all': Sinks
+    }
+
+    return sinks_dict
+
+
+def calculate_accessibility_by_sink_type(df_population, sinks_dict, graph, inf_replacement=12):
+    """
+    Calculate both nearest and average access times for each sink type.
+    
+    Parameters:
+    -----------
+    df_population : GeoDataFrame
+        Population/agricultural points with vertex_id
+    sinks_dict : dict
+        Dictionary with keys 'road', 'port', 'rail', 'all' and GeoDataFrame values
+    graph : igraph.Graph
+        Network graph
+    inf_replacement : float
+        Value to replace inf with for average calculations
+        
+    Returns:
+    --------
+    df_population : GeoDataFrame
+        With columns for nearest_* and avg_* for each sink type
+    """
+    df_population = df_population.copy()
+    
+    for sink_type, sink_df in sinks_dict.items():
+        if len(sink_df) == 0:
+            print(f"Warning: No sinks of type '{sink_type}', skipping...")
+            df_population[f'nearest_{sink_type}'] = np.nan
+            df_population[f'avg_{sink_type}'] = np.nan
+            continue
+            
+        unique_pop_vertex_ids = df_population['vertex_id'].unique()
+        unique_sink_vertex_ids = sink_df['vertex_id'].unique()
+        
+        # Calculate distance matrix
+        distance_matrix = np.array(graph.distances(
+            source=unique_pop_vertex_ids,
+            target=unique_sink_vertex_ids,
+            weights='fft'
+        ))
+        
+        # NEAREST: minimum distance to any sink
+        min_distances = np.min(distance_matrix, axis=1)
+        vertex_to_nearest = dict(zip(unique_pop_vertex_ids, min_distances))
+        df_population[f'nearest_{sink_type}'] = df_population['vertex_id'].map(vertex_to_nearest)
+        
+        # AVERAGE: mean distance to all sinks (with inf replacement)
+        distance_matrix_for_avg = distance_matrix.copy()
+        distance_matrix_for_avg[np.isinf(distance_matrix_for_avg)] = inf_replacement
+        avg_distances = np.mean(distance_matrix_for_avg, axis=1)
+        vertex_to_avg = dict(zip(unique_pop_vertex_ids, avg_distances))
+        df_population[f'avg_{sink_type}'] = df_population['vertex_id'].map(vertex_to_avg)
+        
+        print(f"{sink_type}: {len(unique_sink_vertex_ids)} sinks | "
+              f"Nearest avg: {np.mean(min_distances[~np.isinf(min_distances)]):.2f}h | "
+              f"Avg to all: {np.mean(avg_distances):.2f}h")
+    
+    return df_population
+
+
+def update_column_names(df_agri):
+
+    # Rename columns to indicate baseline
+    baseline_cols = {}
+    for sink_type in sinks_dict.keys():
+        baseline_cols[f'nearest_{sink_type}'] = f'baseline_nearest_{sink_type}'
+        baseline_cols[f'avg_{sink_type}'] = f'baseline_avg_{sink_type}'
+
+    df_agri = df_agri.rename(columns=baseline_cols)
+
+    return df_agri
+
+
+def flood_exposure_analysis_agriculture(base_network, df_worldpop, TheFolder, basins_data):
+
+     # ## Step 10: Identify exposed assets
+
+    exposed_roads = base_network[base_network.exposed].reset_index(drop=True)
+
+    tqdm.pandas(desc='get basin')    
+    exposed_roads['subregion'] = exposed_roads.progress_apply(lambda road_segment: _get_river_basin(road_segment,basins_data),axis=1)
+
+    unique_scenarios = {}
+    for subregion,subregion_exposed in tqdm(exposed_roads.groupby('subregion'),total=len(exposed_roads.groupby('subregion'))):
+        EdgeExposedList = subregion_exposed.id.values
+        edges_to_remove = base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
+        unique_scenarios[subregion] = edges_to_remove
+
+    # ###### -10-1: Save the uniqe_scenarios dictionary as a pickle file:
+
+    filename_unique_scenarios = f'unique_scenarios_{country_iso3}_{Subregion}.pkl'
+    file_path = os.path.join(TheFolder, filename_unique_scenarios)
+    with open(file_path, 'wb') as file:
+        pickle.dump(unique_scenarios, file)
+
+    # ### Step 11: Calculate the flood_statistics_per_scenario and save the results as a csv file
+
+    unique_scenarios_Second = {}
+
+    for subregion, subregion_exposed in tqdm(exposed_roads.groupby('subregion'), total=len(exposed_roads.groupby('subregion'))):
+        EdgeExposedList = subregion_exposed.id.values
+        edges_to_remove2 = base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
+        flooded_edges = base_network.loc[base_network.id.isin(EdgeExposedList)]
+        
+        non_empty_values = flooded_edges[flooded_edges['values'].apply(len) > 0]['values']
+        
+        Merged_Values_Column = [item for sublist in non_empty_values for item in sublist]
+        
+        min_value = np.min(Merged_Values_Column) if Merged_Values_Column else np.nan
+        mean_value = np.mean(Merged_Values_Column) if Merged_Values_Column else np.nan
+        max_value = np.max(Merged_Values_Column) if Merged_Values_Column else np.nan
+        
+        unique_scenarios_Second[subregion] = {
+            "min_value": min_value,
+            "mean_value": mean_value,  
+            "max_value": max_value    
+        }
+
+    flood_statistics_per_scenario = []
+
+    for subregion, values in unique_scenarios_Second.items():
+        flood_statistics_per_scenario.append({
+            "basinID": subregion,
+            "min water depth (m)": values["min_value"],
+            "mean water depth (m)": values["mean_value"],
+            "max water depth (m)": values["max_value"]
+        })
+
+    Flood_Statistics_Per_Scenario = pd.DataFrame(flood_statistics_per_scenario)
+
+    output_csv_file = os.path.join(TheFolder, f"{country_iso3}_flood_statistics_per_Basin_{Subregion}_scenario.csv")
+    Flood_Statistics_Per_Scenario.to_csv(output_csv_file, index=False)
+
+    print(Flood_Statistics_Per_Scenario)
+
+    # =============================================================================
+    # UPDATED STEP 12: Run post-flood accessibility for ALL sink types
+    # =============================================================================
+
+    print("\n" + "="*60)
+    print("FLOOD SCENARIO ACCESSIBILITY CALCULATIONS")
+    print("="*60)
+
+    save_new_results = {}
+    sindex_pop = shapely.STRtree(df_worldpop.geometry)
+    C = 1
+
+    for BasinID in tqdm(unique_scenarios, desc="Processing basins"):
+        save_new_results[BasinID] = {}
+        
+        try:
+            edges_to_remove = unique_scenarios[BasinID]
+            real_edges_to_remove = [x.index for x in graph.es if x['id'] in edges_to_remove]
+            
+            # Create damaged graph
+            damaged_graph = graph.copy()
+            damaged_graph.delete_edges(real_edges_to_remove)
+            
+            # Get population in buffer zone around basin
+            buffer_zone = basins_data.loc[basins_data.HYBAS_ID == BasinID].to_crs(3857).buffer(50000).to_crs(4326)
+            df_population = df_worldpop.iloc[sindex_pop.query(buffer_zone, predicate='intersects')[1]].copy()
+            df_population_backup = df_population.copy()
+            InitialTotalPopulationPerBasin = df_population_backup['band_data'].sum()
+            
+            # Calculate post-flood accessibility for ALL sink types
+            df_population = calculate_accessibility_by_sink_type(df_population, sinks_dict, damaged_graph)
+            
+            # Rename to post-flood columns
+            postflood_cols = {}
+            for sink_type in sinks_dict.keys():
+                postflood_cols[f'nearest_{sink_type}'] = f'postflood_nearest_{sink_type}'
+                postflood_cols[f'avg_{sink_type}'] = f'postflood_avg_{sink_type}'
+            df_population = df_population.rename(columns=postflood_cols)
+            
+            # Calculate deltas for each sink type and metric
+            for sink_type in sinks_dict.keys():
+                # Delta for nearest
+                df_population[f'delta_nearest_{sink_type}'] = (
+                    df_population[f'postflood_nearest_{sink_type}'] - 
+                    df_population[f'baseline_nearest_{sink_type}']
+                )
+                # Delta for average
+                df_population[f'delta_avg_{sink_type}'] = (
+                    df_population[f'postflood_avg_{sink_type}'] - 
+                    df_population[f'baseline_avg_{sink_type}']
+                )
+            
+            # Calculate summary statistics per sink type
+            results_by_sink_type = {}
+            
+            for sink_type in sinks_dict.keys():
+                # Nearest sink analysis
+                delta_nearest = df_population[f'delta_nearest_{sink_type}']
+                affected_nearest = df_population[
+                    (~delta_nearest.isnull()) & 
+                    (delta_nearest != 0) & 
+                    (~np.isinf(delta_nearest))
+                ]
+                lost_nearest = df_population[delta_nearest == np.inf]
+                
+                # Average sink analysis
+                delta_avg = df_population[f'delta_avg_{sink_type}']
+                affected_avg = df_population[
+                    (~delta_avg.isnull()) & 
+                    (delta_avg != 0) & 
+                    (~np.isinf(delta_avg))
+                ]
+                
+                results_by_sink_type[sink_type] = {
+                    # Nearest metrics
+                    'affected_pop_nearest': affected_nearest['band_data'].sum(),
+                    'lost_connections_nearest': lost_nearest['band_data'].sum(),
+                    'mean_delta_nearest': delta_nearest[~np.isinf(delta_nearest)].mean(),
+                    'max_delta_nearest': delta_nearest[~np.isinf(delta_nearest)].max(),
+                    
+                    # Average metrics
+                    'affected_pop_avg': affected_avg['band_data'].sum(),
+                    'mean_delta_avg': delta_avg.mean(),
+                    'max_delta_avg': delta_avg.max(),
+                }
+            
+            # Store results
+            save_new_results[BasinID] = {
+                "df_population_backup": df_population_backup,
+                "df_population": df_population,
+                "real_edges_to_remove": [x['osm_id'] for x in graph.es if x['id'] in edges_to_remove],
+                "InitialTotalPopulation": InitialTotalPopulationPerBasin,
+                "results_by_sink_type": results_by_sink_type,
+            }
+            
+        except Exception as e:
+            save_new_results[BasinID] = {
+                "status": "Error",
+                "reason": str(e),
+                "df_population_backup": None,
+                "df_population": None,
+                "real_edges_to_remove": None,
+                "InitialTotalPopulation": None,
+                "results_by_sink_type": None,
+            }
+        
+        C += 1
+
+    # ##### -12-1: Save the resulted nested dictionary, save_new_results, as a pickle file:
+
+    filename_nested_Dictionary = f'save_new_results_{country_iso3}_{Subregion}.pkl'
+    file_path = os.path.join(TheFolder, filename_nested_Dictionary)
+    with open(file_path, 'wb') as file:
+        pickle.dump(save_new_results, file)
+
+    # =============================================================================
+    # UPDATED STEP 13: Create summary DataFrames by sink type
+    # =============================================================================
+
+    print("\n" + "="*60)
+    print("CREATING SUMMARY TABLES")
+    print("="*60)
+
+    summary_rows = []
+
+    for BasinID, results in save_new_results.items():
+        if results.get('status') == 'Error':
+            continue
+        
+        row = {'BasinID': BasinID, 'InitialTotalPopulation': results['InitialTotalPopulation']}
+        
+        for sink_type, metrics in results['results_by_sink_type'].items():
+            for metric_name, value in metrics.items():
+                row[f'{sink_type}_{metric_name}'] = value
+        
+        summary_rows.append(row)
+
+    summary_df = pd.DataFrame(summary_rows)
+
+    # Save summary CSV
+    output_csv_file = os.path.join(TheFolder, f"{country_iso3}_accessibility_impact_summary_{Subregion}.csv")
+    summary_df.to_csv(output_csv_file, index=False)
+
+    print(f"\nSummary saved to: {output_csv_file}")
+    print(f"Columns: {list(summary_df.columns)}")
+    print(summary_df.head())
+
+    print("\nAnalysis completed successfully!")
 
 
 
 def main():
     """
-    Run the road-network criticality analysis for flood disruption scenarios,
-    evaluating how unpassable road segments affect accessibility across
-    multiple sectors. The workflow assesses access from settlements to emergency
-    services (hospitals, firefighters, police), and access from industrial areas
-    to road border crossings as well as from agricultural areas to borders, ports,
-    and rail terminals. All results are visualized in a series of maps saved to
-    the directory defined in `config.figure_path`, with optional on-screen display.
-    The analysis also produces a combined multi-service criticality figure to
-    summarize the most affected parts of the network.
+    Run the end-to-end flood-scenario accessibility and criticality analysis.
+    Processes industrial areas, agricultural areas, and emergency services
+    (firefighters, hospitals, police) by mapping each location to the road
+    network, computing baseline accessibility, and then evaluating how flooding
+    disrupts access under basin-specific scenarios. All outputs are saved into
+    sector-specific criticality folders for further analysis.
+
+    
+    WARNING: This script performs large-scale network routing and basin-level
+    flood disruption simulations and may take SEVERAL HOURS to run depending on
+    hardware and data size.
+
     """
 
-    # 0) Initialize configuration (paths, flags, environment)
+    # ------------------------------------------------------------
+    # Load configuration with file paths and settings
+    # ------------------------------------------------------------
     config = NetworkConfig()
 
-    # 1) Load and visualize basin depth classes
-    basins = load_basin_data(config)
-    plot_basins(basins, config)
+    # Analysis parameters (only used indirectly in sub-functions)
+    upscale_factor = 10
+    country_iso3 = 'SRB'
+    PostEvent_speed = 20
+    Subregion = 'basins'
+    basins = True
+    subnational = False
+    Threshold = 0.25
+    Stru_Threshold = 4
 
-    # 2) Load the road network (largest connected component, reprojected)
-    base_network = load_road_network(config)
+    # ------------------------------------------------------------
+    # 1. Load road network and build routing graph
+    # ------------------------------------------------------------
+    base_network = gpd.read_parquet(config.Path_RoadNetwork)
+    print("Creating graph representation of the road network...")
+    nodes, graph = create_graph_for_spatial_matching(base_network)
 
-    # 3) Emergency services — compute and plot increased access times for settlements to emergency services 
-    # (hospitals, police, firefighers) for each road section
-    road_criticality_hospitals = calculate_hospital_accessibility(base_network, config)
-    plot_road_criticality_map_emergency_service(road_criticality_hospitals, base_network, config, "hospitals")
+    # Load flood maps + basins for clipping/aggregation
+    hazard_map = xr.open_dataset(config.flood_map_RP100, engine="rasterio")
+    basins_data = gpd.read_file(config.basins_shapefile)
 
-    road_criticality_police = calculate_police_accessibility(base_network, config)
-    plot_road_criticality_map_emergency_service(road_criticality_police, base_network, config, "police")
+    # ------------------------------------------------------------
+    # 2. Load and prepare settlements (baseline demand points)
+    # ------------------------------------------------------------
+    df_settlements = read_population_data(config)
+    df_settlements['vertex_id'] = nearest_network_nodes(df_settlements, nodes)
 
-    road_criticality_firefighters = calculate_firefigher_accessibility(base_network, config)
-    plot_road_criticality_map_emergency_service(road_criticality_firefighters, base_network, config, "firefighters")
+    # ============================================================
+    # 3. INDUSTRIAL AREAS (Factories)
+    # ============================================================
+    Factory_criticality_folder = "factory_criticality_results"
+    os.makedirs(Factory_criticality_folder, exist_ok=True)
 
-    # 4) Economic sectors — compute/plot factory and agriculture criticality
-    #Factories: average increased travel time from industrial areas to borders
-    road_criticality_factories = calculate_criticality_factory_access(base_network, config)
-    plot_road_criticality_factories(road_criticality_factories, base_network, config)
+    # Load factories + map to nearest road node
+    df_factories = read_factory_data(config)
+    print("Mapping industrial areas to nearest network nodes...")
+    df_factories['vertex_id'] = nearest_network_nodes(df_factories, nodes)
 
-    # Agriculture: average increased time to all sinks and to nearest sink by type (borders, ports, rail terminals)
-    road_criticality_agriculture = calculate_road_criticality_agriculture(base_network, config)
-    plot_agriculture_average_increased_travel_time(road_criticality_agriculture, base_network, config)
-    plot_agriculture_increased_travel_time_to_nearest(base_network, config)
+    # Load border crossings (sinks) and map them to nodes
+    Sink = read_road_border_data(config)
+    Sink = map_sinks_to_nearest_network_node(Sink)
 
-    # 5) Synthesis — combined 2×2 figure (hospitals, factories, police, fire stations)
-    plot_and_save_combined_results(base_network, config)
+    # Compute baseline average access times (normal conditions)
+    print("Calculating average access times from factories to road border crossings...")
+    df_factories = get_average_access_time(df_factories, Sink, graph)
+
+    # Assess access disruption under flooding
+    print("Calculating factory access times under flooding scenarios...")
+    flood_exposure_factory_accessibility(
+        base_network, df_factories, Sink, Factory_criticality_folder, basins_data
+    )
+
+    # ============================================================
+    # 4. AGRICULTURAL AREAS
+    # ============================================================
+    Agriculture_criticality_folder = "allagri_criticality_results"
+    os.makedirs(Agriculture_criticality_folder, exist_ok=True)
+
+    df_agri = read_agri_data(config)
+    print("Mapping agricultural areas to nearest network nodes...")
+    df_agri['vertex_id'] = nearest_network_nodes(df_agri, nodes)
+
+    # Load sinks: borders, ports, rail terminals
+    print("Loading sink location data (borders, ports, rail terminals)...")
+    sinks_dict = load_sinks(config, nodes)
+
+    print("\n" + "=" * 60)
+    print("BASELINE ACCESSIBILITY CALCULATIONS")
+    print("=" * 60)
+
+    # Baseline access to borders/ports/terminals
+    print("Calculating baseline agricultural accessibility to all sink types...")
+    df_agri = calculate_accessibility_by_sink_type(df_agri, sinks_dict, graph)
+    df_agri = update_column_names(df_agri)
+
+    # Flood impact on agricultural accessibility
+    print("Calculating agricultural access under flooding scenarios...")
+    flood_exposure_analysis_agriculture(
+        base_network, df_agri, Agriculture_criticality_folder, basins_data
+    )
+
+    # ============================================================
+    # 5. FIREFIGHTERS
+    # ============================================================
+    Fire_criticality_folder = "fire_criticality_results"
+    os.makedirs(Fire_criticality_folder, exist_ok=True)
+
+    print("Loading firefighter locations...")
+    sink_firefighters = load_and_map_sinks(config, nodes, "firefighters")
+
+    print("Calculating distance to the nearest fire station...")
+    accessibility_firefighters = get_distance_to_nearest_facility(
+        df_settlements, sink_firefighters, graph
+    )
+
+    flood_exposure_emergency_service_accessibility(
+        accessibility_firefighters, sink_firefighters,
+        Fire_criticality_folder, basins_data
+    )
+
+    # ============================================================
+    # 6. HEALTHCARE FACILITIES
+    # ============================================================
+    Health_care_criticality_folder = "healthcare_criticality_results"
+    os.makedirs(Health_care_criticality_folder, exist_ok=True)
+
+    print("Loading healthcare locations...")
+    sink_hospitals = load_and_map_sinks(config, nodes, "hospitals")
+
+    print("Calculating access to the nearest hospital...")
+    accessibility_hospitals = get_distance_to_nearest_facility(
+        df_settlements, sink_hospitals, graph
+    )
+
+    flood_exposure_emergency_service_accessibility(
+        accessibility_hospitals, sink_hospitals,
+        Health_care_criticality_folder, basins_data
+    )
+
+    # ============================================================
+    # 7. POLICE
+    # ============================================================
+    Police_criticality_folder = "police_criticality_results"
+    os.makedirs(Police_criticality_folder, exist_ok=True)
+
+    print("Loading police station locations...")
+    sink_police = load_and_map_sinks(config, nodes, "police")
+
+    print("Calculating access to the nearest police station...")
+    accessibility_police = get_distance_to_nearest_facility(
+        df_settlements, sink_police, graph
+    )
+
+    flood_exposure_emergency_service_accessibility(
+        accessibility_police, sink_police,
+        Police_criticality_folder, basins_data
+    )
+
 
 
 

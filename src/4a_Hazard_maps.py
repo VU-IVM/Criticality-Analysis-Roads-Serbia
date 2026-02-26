@@ -66,7 +66,7 @@ def load_data(config: NetworkConfig) -> Tuple[xr.Dataset, gpd.GeoDataFrame]:
         Boundary geometry of the selected country.
     """
     # Load world countries shapefile
-    countries = gpd.read_file(config.data_path / "ne_10m_admin_0_countries.shp")
+    countries = gpd.read_file(config.world_boundaries)
 
     # Select target country (hardcoded SOV_A3, but can be made parameterizable)
     country = countries.loc[countries.SOV_A3 == "SRB"]
@@ -74,7 +74,7 @@ def load_data(config: NetworkConfig) -> Tuple[xr.Dataset, gpd.GeoDataFrame]:
 
     # Load hazard raster
     hazard = xr.open_dataset(
-        config.data_path / "Europe_RP100_filled_depth.tif",
+        config.flood_map_RP100,
         engine="rasterio"
     )
 
@@ -214,9 +214,9 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
         Saves a PNG figure and optionally displays it.
     """
     # Load inputs
-    snow_drift = gpd.read_file(config.data_path / "snezni_nanosi_studije.shp")
+    snow_drift = gpd.read_file(config.Path_snow_drift_data)
     baseline_roads = gpd.read_parquet(
-        config.intermediate_results_path / "PERS_directed_final.parquet"
+        config.Path_processed_road_network
     )
 
     # Create figure
@@ -355,7 +355,7 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
         Saves a PNG figure and optionally displays it.
     """
     # Load landslide point data
-    landslides = gpd.read_file(config.data_path / "Nestabilne_pojave.shp")
+    landslides = gpd.read_file(config.Path_landslide_data)
 
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 10), facecolor="white")
