@@ -47,21 +47,22 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
+from config.network_config import NetworkConfig
+
+
 # Project root (repository root, one level above this src folder)
 PROJECT_ROOT = Path(__file__).resolve().parents[1] if '__file__' in globals() else Path.cwd().resolve()
 print(f"Project root set to: {PROJECT_ROOT}")
 
 @dataclass
-class NetworkConfig:
+class LocalConfig:
     """Configuration for network analysis and visualization."""
     
     # Input paths
-    data_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'input_files')
-    osm_filename: str = "SRB.osm.pbf"
-    pers_road_filename: str = "DeoniceRSDP-Jul2025..shp"
+    data_path = NetworkConfig.data_path
     
     # Output paths
-    output_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'figures')
+    output_path = NetworkConfig.figure_path
     
     # ArcGIS parameters
     if ARCPY_AVAILABLE:
@@ -69,7 +70,7 @@ class NetworkConfig:
         arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
     else:
         # If no arcpyinput
-        gis_input_layer: Optional[str] = str(PROJECT_ROOT / 'input_files' / pers_road_filename)
+        gis_input_layer = NetworkConfig.Original_road_network
         
     # OSM configuration
     osm_keys: List[str] = field(default_factory=lambda: [
@@ -128,7 +129,7 @@ class NetworkConfig:
     @property
     def osm_path(self) -> Path:
         """Full path to OSM file."""
-        return self.data_path / self.osm_filename
+        return NetworkConfig.osm_path
     
     def __post_init__(self):
         """Ensure output directories exist."""
@@ -182,7 +183,7 @@ def map_road_category(highway_type: str) -> str:
         return highway_type
 
 
-def load_osm_network(config: NetworkConfig) -> gpd.GeoDataFrame:
+def load_osm_network(config: LocalConfig) -> gpd.GeoDataFrame:
     """
     Load and process OSM road network data.
     
@@ -212,7 +213,7 @@ def load_osm_network(config: NetworkConfig) -> gpd.GeoDataFrame:
 
 
 def prepare_osm_network_for_plotting(base_network: gpd.GeoDataFrame, 
-                                      config: NetworkConfig) -> gpd.GeoDataFrame:
+                                      config: LocalConfig) -> gpd.GeoDataFrame:
     """
     Filter and categorize OSM network for visualization.
     
@@ -237,7 +238,7 @@ def prepare_osm_network_for_plotting(base_network: gpd.GeoDataFrame,
 
 
 def plot_osm_network(base_network_filtered: gpd.GeoDataFrame, 
-                     config: NetworkConfig) -> None:
+                     config: LocalConfig) -> None:
     """
     Create and save OSM road network visualization.
     
@@ -305,7 +306,7 @@ def plot_osm_network(base_network_filtered: gpd.GeoDataFrame,
                 dpi=config.figure_dpi, bbox_inches='tight')
     plt.show()
 
-def load_serbian_network_no_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
+def load_serbian_network_no_arcpy(config: LocalConfig) -> gpd.GeoDataFrame:
     """
     Load Serbian road network from a GIS file path using GeoPandas.
     
@@ -322,7 +323,7 @@ def load_serbian_network_no_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
     
     return gdf
 
-def load_serbian_network_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
+def load_serbian_network_arcpy(config: LocalConfig) -> gpd.GeoDataFrame:
     """
     Load Serbian road network from ArcGIS layer.
     
@@ -355,7 +356,7 @@ def load_serbian_network_arcpy(config: NetworkConfig) -> gpd.GeoDataFrame:
     return gdf
 
 
-def plot_serbian_network(gdf: gpd.GeoDataFrame, config: NetworkConfig) -> None:
+def plot_serbian_network(gdf: gpd.GeoDataFrame, config: LocalConfig) -> None:
     """
     Create and save Serbian road network visualization.
     
@@ -429,7 +430,7 @@ def plot_serbian_network(gdf: gpd.GeoDataFrame, config: NetworkConfig) -> None:
 
 def plot_network_comparison(gdf: gpd.GeoDataFrame, 
                             base_network: gpd.GeoDataFrame,
-                            config: NetworkConfig) -> None:
+                            config: LocalConfig) -> None:
     """
     Create side-by-side comparison of Serbian and OSM road networks.
     
@@ -518,7 +519,7 @@ def plot_network_comparison(gdf: gpd.GeoDataFrame,
 
 
 def plot_road_length_statistics(base_network_filtered: gpd.GeoDataFrame,
-                                config: NetworkConfig) -> None:
+                                config: LocalConfig) -> None:
     """
     Create bar chart of road lengths by category.
     
@@ -612,7 +613,7 @@ def main():
     Main function to orchestrate all network visualization processes.
     """
     # Initialize configuration
-    config = NetworkConfig()
+    config = LocalConfig()
     
     # Load OSM network
     print("Loading OSM network...")

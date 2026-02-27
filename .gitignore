@@ -1,3 +1,13 @@
+# Data folders
+input_files/
+figures/
+intermediate_results/
+accessibility_analysis/
+test_arcpy/
+
+# Python cache
+__pycache__/
+
 # -----------------------
 # Large data files
 # -----------------------

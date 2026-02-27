@@ -44,6 +44,8 @@ from shapely.geometry import Point
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
+from config.network_config import NetworkConfig
+
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -63,13 +65,8 @@ class CriticalityConfig:
     """Configuration for the main-network criticality analysis."""
 
     # Paths
-    data_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'input_files')
-    intermediate_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'intermediate_results')
-    figures_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'figures')
-
-    # Input files
-    network_filename: str = 'PERS_directed_final.parquet'
-    population_filename: str = 'population_NEW_settlement_geocoded.xlsx'
+    intermediate_path: Path = NetworkConfig.intermediate_results_path
+    figures_path: Path = NetworkConfig.figure_path
 
     # Demand-model parameters
     dist_decay: float = 1.0
@@ -168,12 +165,12 @@ class CriticalityConfig:
     @property
     def network_path(self) -> Path:
         """Full path to directed network parquet file."""
-        return self.intermediate_path / self.network_filename
+        return NetworkConfig.Path_processed_road_network
 
     @property
     def population_path(self) -> Path:
         """Full path to population Excel file."""
-        return self.data_path / self.population_filename
+        return NetworkConfig.Path_SettlementData_Excel
 
     def __post_init__(self):
         """Ensure output directories exist."""

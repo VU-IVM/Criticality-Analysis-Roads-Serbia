@@ -72,7 +72,7 @@ def create_grid(bbox,height):
     return shapely.polygons(res_geoms)
 
 def get_exposure_values(country_iso3,base_network,hazard_map,Threshold,Stru_Threshold):
-    world = gpd.read_file(Path(r"C:\Users\eks510\OneDrive - Vrije Universiteit Amsterdam\Shirazian, S. (Shadi)'s files - NewCodes\Tajikistan\ne_10m_admin_0_countries.shp"))
+    world = gpd.read_file(NetworkConfig.world_boundaries)
     country_bounds = world.loc[world.ADM0_A3 == country_iso3].bounds
     country_geom = world.loc[world.ADM0_A3 == country_iso3].geometry
     
@@ -1037,7 +1037,8 @@ def main():
     # ============================================================
     # 3. INDUSTRIAL AREAS (Factories)
     # ============================================================
-    Factory_criticality_folder = "factory_criticality_results"
+    #create output directory if not already existent
+    Factory_criticality_folder = config.accessibility_analysis_path / "factory_criticality_results"
     os.makedirs(Factory_criticality_folder, exist_ok=True)
 
     # Load factories + map to nearest road node
@@ -1062,9 +1063,11 @@ def main():
     # ============================================================
     # 4. AGRICULTURAL AREAS
     # ============================================================
-    Agriculture_criticality_folder = "allagri_criticality_results"
+    #create output directory if not already existent
+    Agriculture_criticality_folder = config.accessibility_analysis_path / "allagri_criticality_results"
     os.makedirs(Agriculture_criticality_folder, exist_ok=True)
 
+    #Load location data of agricultural areas and map to nearest network node
     df_agri = read_agri_data(config)
     print("Mapping agricultural areas to nearest network nodes...")
     df_agri['vertex_id'] = nearest_network_nodes(df_agri, nodes)
@@ -1091,9 +1094,11 @@ def main():
     # ============================================================
     # 5. FIREFIGHTERS
     # ============================================================
-    Fire_criticality_folder = "fire_criticality_results"
+    #create output directory if not already existent
+    Fire_criticality_folder = config.accessibility_analysis_path / "fire_criticality_results"
     os.makedirs(Fire_criticality_folder, exist_ok=True)
 
+    #Load location data of fire stations and map them to nearest network node
     print("Loading firefighter locations...")
     sink_firefighters = load_and_map_sinks(config, nodes, "firefighters")
 
@@ -1102,6 +1107,7 @@ def main():
         df_settlements, sink_firefighters, graph
     )
 
+    #run accessibility analysis to fire stations under flooding
     flood_exposure_emergency_service_accessibility(
         accessibility_firefighters, sink_firefighters,
         Fire_criticality_folder, basins_data
@@ -1110,9 +1116,11 @@ def main():
     # ============================================================
     # 6. HEALTHCARE FACILITIES
     # ============================================================
-    Health_care_criticality_folder = "healthcare_criticality_results"
+    #create output directory if not already existent
+    Health_care_criticality_folder = config.accessibility_analysis_path / "healthcare_criticality_results"
     os.makedirs(Health_care_criticality_folder, exist_ok=True)
 
+    #Load location data of healthcare facilities and map them to nearest network node
     print("Loading healthcare locations...")
     sink_hospitals = load_and_map_sinks(config, nodes, "hospitals")
 
@@ -1121,6 +1129,7 @@ def main():
         df_settlements, sink_hospitals, graph
     )
 
+    #run accessibility analysis to hospitals under flooding
     flood_exposure_emergency_service_accessibility(
         accessibility_hospitals, sink_hospitals,
         Health_care_criticality_folder, basins_data
@@ -1129,9 +1138,11 @@ def main():
     # ============================================================
     # 7. POLICE
     # ============================================================
-    Police_criticality_folder = "police_criticality_results"
+    #create output directory if not already existent
+    Police_criticality_folder = config.accessibility_analysis_path / "police_criticality_results"
     os.makedirs(Police_criticality_folder, exist_ok=True)
 
+    #Load location data of police stations and map them to nearest network node
     print("Loading police station locations...")
     sink_police = load_and_map_sinks(config, nodes, "police")
 
@@ -1140,6 +1151,7 @@ def main():
         df_settlements, sink_police, graph
     )
 
+    #run accessibility analysis to police stations under flooding
     flood_exposure_emergency_service_accessibility(
         accessibility_police, sink_police,
         Police_criticality_folder, basins_data
