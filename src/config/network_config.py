@@ -56,6 +56,21 @@ class NetworkConfig:
     Path_flood_statistics_per_basin = intermediate_results_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
     Path_future_floods_change_RP = intermediate_results_path / "Future Floods change in RP.parquet"
     Path_future_flooding_roads = intermediate_results_path / "Future Floods change in RP experienced by roads.parquet"
+    Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
+    Path_main_network_hazard_exposure = intermediate_results_path / "main_network_hazard_exposure.parquet"
+
+    Path_hospital_impacts = intermediate_results_path / 'hospital_impacts.parquet'
+    Path_factory_impacts = intermediate_results_path / 'factory_impacts.parquet'
+    Path_police_impacts = intermediate_results_path / 'police_impacts.parquet'
+    Path_fire_fighter_impacts = intermediate_results_path / 'fire_impacts.parquet'
+    Path_road_border_impacts = intermediate_results_path / 'road_impacts.parquet'
+    Path_port_impacts = intermediate_results_path / 'port_impacts.parquet'
+    Path_railway_impacts = intermediate_results_path / 'rail_impacts.parquet'
+    Path_precipitation_change_rcp_8_5_far_future = intermediate_results_path / 'change in maximum daily precipitation rcp 85 period 2.paquet'
+    Path_climate_criticality_results = intermediate_results_path / 'VUA_Climate_Criticality_PERS.xlsx'
+
+
+
 
     #Path for figures that are created by the scripts
     Path_factory_acces_avg = figure_path / 'factory_access_avg.png'

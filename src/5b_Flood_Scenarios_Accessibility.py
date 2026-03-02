@@ -404,7 +404,24 @@ def flood_exposure_factory_accessibility(base_network, df_worldpop, Sink, Factor
     print("Analysis completed successfully!")
 
 
-def read_population_data(config):
+def read_population_data(config: NetworkConfig) -> gpd.GeoDataFrame:
+    """
+    Load settlement population data from an Excel file, filter out rows with missing
+    coordinates or population values, and convert the result into a GeoDataFrame of
+    settlement points for use in accessibility and network analyses.
+
+    Parameters
+    ----------
+    config : NetworkConfig
+        Provides the path to the settlement Excel file containing 'latitude',
+        'longitude', and 'Total' population fields.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        A GeoDataFrame with one point per settlement, including a 'band_data'
+        population column and geometries defined in EPSG:4326.
+    """
 
     DataFrame_StatePop = pd.read_excel(config.Path_SettlementData_Excel)
 
@@ -452,7 +469,7 @@ def load_and_map_sinks(config: NetworkConfig, nodes: pd.DataFrame, sink_type) ->
     return Sink
 
 
-def get_distance_to_nearest_facility(df_population, Sink, graph):
+def get_distance_to_nearest_facility(df_population, Sink, graph) -> gpd.GeoDataFrame:
     df_population = df_population.copy()
     df_population['closest_sink_vertex_id'] = None
     df_population['closest_sink_osm_id'] = None
@@ -499,6 +516,8 @@ def get_distance_to_nearest_facility(df_population, Sink, graph):
         df_population.at[idx, 'closest_sink_total_fft'] = closest_sink_total_fft
     
     return df_population
+
+
 
 def flood_exposure_emergency_service_accessibility(df_worldpop, Sink, TheFolder, basins_data):
 
