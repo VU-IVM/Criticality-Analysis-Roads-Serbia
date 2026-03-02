@@ -59,6 +59,8 @@ if str(PROJECT_ROOT) not in sys.path:
 # Local/Project imports
 from src.simplify import *
 
+from config.network_config import NetworkConfig
+
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -67,17 +69,12 @@ warnings.simplefilter(action="ignore", category=RuntimeWarning)
 class NetworkPrepConfig:
     """Configuration for network preparation and analysis."""
     
-    # Input paths
-    data_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'input_files')
-    aadt_filename: str = "PGDS_2024.shp"
-    world_filename: str = "ne_10m_admin_0_countries.shp"
-    
     # Output paths
-    output_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'intermediate_results')
-    figures_path: Path = field(default_factory=lambda: PROJECT_ROOT / 'figures')
+    output_path = NetworkConfig.intermediate_results_path
+    figures_path = NetworkConfig.figure_path
     
     # Input file paths (for both ArcGIS and non-ArcGIS environments)
-    network_input_layer: Path = field(default_factory=lambda: PROJECT_ROOT / 'input_files' / "roads_serbia_original_full_AADT.parquet")
+    network_input_layer = NetworkConfig.Network_original_full_AADT
     arcgis_input_layer: Optional[str] = None
     arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
     
@@ -143,12 +140,12 @@ class NetworkPrepConfig:
     @property
     def aadt_path(self) -> Path:
         """Full path to AADT data file."""
-        return self.data_path / self.aadt_filename
+        return NetworkConfig.AADT_data
     
     @property
     def world_path(self) -> Path:
         """Full path to world boundaries file."""
-        return self.data_path / self.world_filename
+        return NetworkConfig.world_boundaries
     
     def __post_init__(self):
         """Ensure output directories exist."""

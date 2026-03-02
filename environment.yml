@@ -97,10 +97,7 @@ dependencies:
   - libcblas=3.11.0
   - libcrc32c=1.1.2
   - libcurl=8.18.0
-  - libcxx=21.1.8
   - libdeflate=1.25
-  - libedit=3.1.20250104
-  - libev=4.33
   - libevent=2.1.12
   - libexpat=2.7.3
   - libffi=3.5.2
@@ -156,7 +153,6 @@ dependencies:
   - minizip=4.0.10
   - munkres=1.1.4
   - muparser=2.3.5
-  - ncurses=6.5
   - nest-asyncio=1.6.0
   - networkx=3.6.1
   - nlohmann_json=3.12.0
@@ -201,7 +197,6 @@ dependencies:
   - rasterio=1.5.0
   - rasterstats
   - re2=2025.11.05
-  - readline=8.3
   - requests=2.32.5
   - rioxarray
   - rtree=1.4.1
