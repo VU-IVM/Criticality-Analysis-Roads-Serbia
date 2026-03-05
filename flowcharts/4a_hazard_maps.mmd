@@ -1,0 +1,32 @@
+flowchart TB
+  %% src/4a_Hazard_maps.py
+  subgraph IN["Inputs"]
+    IN_WORLD["input_files/ne_10m_admin_0_countries.shp"]
+    IN_FLOOD["input_files/Europe_RP100_filled_depth.tif"]
+    IN_SNOW["input_files/snezni_nanosi_studije.shp"]
+    IN_LAND["input_files/Nestabilne_pojave.shp"]
+    IN_ROADS["intermediate_results/PERS_directed_final.parquet"]
+    IN_BASEMAP["Basemap tiles (contextily)"]
+  end
+
+  subgraph PROC["Process (src/4a_Hazard_maps.py)"]
+    P1["Load Serbia boundary + flood raster (clip to country)"]
+    P2["Plot flood depth map"]
+    P3["Load snow drift + roads and plot snow drift map"]
+    P4["Load landslide inventory and plot landslide map"]
+  end
+
+  subgraph OUT["Outputs"]
+    O1["figures/flood_depth_map.png"]
+    O2["figures/snow_drift_map.png"]
+    O3["figures/landslides_map_by_year.png"]
+  end
+
+  IN_WORLD --> P1
+  IN_FLOOD --> P1 --> P2 --> O1
+  IN_SNOW --> P3 --> O2
+  IN_ROADS --> P3
+  IN_LAND --> P4 --> O3
+  IN_BASEMAP --> P2
+  IN_BASEMAP --> P3
+  IN_BASEMAP --> P4

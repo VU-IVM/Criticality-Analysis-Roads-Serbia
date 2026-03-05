@@ -1,0 +1,41 @@
+flowchart TB
+  %% src/5a_MainNetwork_Hazard_Criticality.py
+  subgraph IN["Inputs"]
+    IN_CRIT["intermediate_results/criticality_results.parquet"]
+    IN_WORLD["input_files/ne_10m_admin_0_countries.shp"]
+    IN_FLOOD["input_files/Europe_RP100_filled_depth.tif"]
+    IN_SNOW["input_files/snezni_nanosi_studije.shp"]
+    IN_LAND["input_files/Nestabilne_pojave.shp"]
+    IN_BASEMAP["Basemap tiles (contextily)"]
+  end
+
+  subgraph PROC["Process (src/5a_MainNetwork_Hazard_Criticality.py)"]
+    P1["Load criticality + hazard layers"]
+    P2["Compute flood-exposed critical segments"]
+    P3["Compute snowdrift-exposed critical segments"]
+    P4["Compute landslide-exposed critical segments"]
+    P5["Combine hazards into one exposure dataset"]
+    P6["Plot multi-hazard criticality figures"]
+  end
+
+  subgraph OUT["Outputs"]
+    O1["figures/vehicle_hours_lost_map_flooded.png"]
+    O2["figures/vhl_hazards_comparison.png"]
+    O3["figures/phl_hazards_comparison.png"]
+    O4["figures/tkl_hazards_comparison.png"]
+    O5["intermediate_results/main_network_hazard_exposure.parquet"]
+  end
+
+  IN_CRIT --> P1
+  IN_WORLD --> P1
+  IN_FLOOD --> P1 --> P2
+  IN_SNOW --> P3
+  IN_LAND --> P4
+  P2 --> P5
+  P3 --> P5
+  P4 --> P5 --> O5
+  P2 --> P6 --> O1
+  P5 --> P6 --> O2
+  P5 --> P6 --> O3
+  P5 --> P6 --> O4
+  IN_BASEMAP --> P6

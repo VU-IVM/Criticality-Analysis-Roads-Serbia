@@ -1,0 +1,49 @@
+flowchart TB
+  %% src/5b_Flood_Scenarios_Accessibility.py
+  subgraph IN["Inputs"]
+    IN_NET["input_files/base_network_SRB_basins.parquet"]
+    IN_FLOOD["input_files/Europe_RP100_filled_depth.tif"]
+    IN_BASINS["input_files/hybas_eu_lev09_v1c.shp"]
+    IN_FACT["input_files/2_Factory_Company_geolocations.xlsx"]
+    IN_AGRI["input_files/1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"]
+    IN_POP["input_files/population_NEW_settlement_geocoded.xlsx"]
+    IN_SINKS["input_files/Borders*.xlsx + Ports/Rail + emergency services"]
+  end
+
+  subgraph PROC["Process (src/5b_Flood_Scenarios_Accessibility.py)"]
+    P1["Build routing graph from road network"]
+    P2["Compute flood exposure on road segments"]
+    P3["Factory flood-scenario accessibility"]
+    P4["Agriculture flood-scenario accessibility"]
+    P5["Emergency services flood-scenario accessibility"]
+    P6["Aggregate basin statistics + summaries"]
+  end
+
+  subgraph OUT["Outputs"]
+    O1["accessibility_analysis/factory_criticality_results/*_scenario.csv"]
+    O2["accessibility_analysis/allagri_criticality_results/*_scenario.csv"]
+    O3["accessibility_analysis/fire_criticality_results/*_scenario.csv"]
+    O4["accessibility_analysis/healthcare_criticality_results/*_scenario.csv"]
+    O5["accessibility_analysis/police_criticality_results/*_scenario.csv"]
+    O6["accessibility_analysis/*_criticality_results/*_impact_summary_*.csv"]
+  end
+
+  IN_NET --> P1
+  IN_FLOOD --> P2
+  IN_BASINS --> P2
+  P1 --> P3
+  P1 --> P4
+  P1 --> P5
+  P2 --> P3
+  P2 --> P4
+  P2 --> P5
+  IN_FACT --> P3 --> P6 --> O1
+  IN_AGRI --> P4 --> P6 --> O2
+  IN_POP --> P5 --> P6
+  IN_SINKS --> P3
+  IN_SINKS --> P4
+  IN_SINKS --> P5
+  P6 --> O3
+  P6 --> O4
+  P6 --> O5
+  P6 --> O6

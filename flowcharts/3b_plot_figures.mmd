@@ -1,0 +1,46 @@
+flowchart TB
+  %% src/3b_plot_figures.py
+  subgraph IN["Inputs"]
+    IN_ACC["intermediate_results/*_accessibility*.parquet\n(fire/hospital/police/factory/agri)"]
+    IN_SINK["intermediate_results/*_sink*.parquet\n(facility/sink locations)"]
+    IN_BASEMAP["Basemap tiles (contextily)"]
+  end
+
+  subgraph PROC["Process (src/3b_plot_figures.py)"]
+    P1["Load accessibility outputs by facility type"]
+    P2["Create baseline accessibility curves"]
+    P3["Plot map figures (factories/agriculture/emergency services)"]
+    P4["Plot summary bar+pie accessibility charts"]
+    P5["Save all figures"]
+  end
+
+  subgraph OUT["Outputs"]
+    O1["figures/factory_access_avg.png"]
+    O2["figures/baseline_accessibility_agri_road_port_rail_3x2.png"]
+    O3["figures/agriculture_access_by_type.png"]
+    O4["figures/baseline_accessibility_fire_stations.png"]
+    O5["figures/baseline_accessibility_hospitals.png"]
+    O6["figures/baseline_accessibility_police_stations.png"]
+    O7["figures/firefighter_access.png"]
+    O8["figures/hospital_access.png"]
+    O9["figures/police_station_access.png"]
+  end
+
+  IN_ACC --> P1
+  IN_SINK --> P1
+  P1 --> P2
+  P1 --> P3
+  P1 --> P4
+  IN_BASEMAP --> P3
+  P2 --> P5
+  P3 --> P5
+  P4 --> P5
+  P5 --> O1
+  P5 --> O2
+  P5 --> O3
+  P5 --> O4
+  P5 --> O5
+  P5 --> O6
+  P5 --> O7
+  P5 --> O8
+  P5 --> O9

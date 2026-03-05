@@ -1,0 +1,33 @@
+flowchart TB
+  %% src/5c_CombinedClimateCriticality.py
+  subgraph IN["Inputs"]
+    IN_HAZ["intermediate_results/main_network_hazard_exposure.parquet"]
+    IN_NET["intermediate_results/PERS_directed_final.parquet"]
+    IN_SECTOR["intermediate_results/*_impacts.parquet\n(hospital/factory/police/fire/road/port/rail)"]
+    IN_CC["intermediate_results/Future Floods change in RP.parquet\n+ precipitation change parquet"]
+    IN_BASEMAP["Basemap tiles (contextily)"]
+  end
+
+  subgraph PROC["Process (src/5c_CombinedClimateCriticality.py)"]
+    P1["Load and harmonize hazard + impact + climate layers"]
+    P2["Spatially attach impact metrics to baseline roads"]
+    P3["Normalize metrics and compute H, T, A sub-indices"]
+    P4["Compute combined climate-criticality score/classes"]
+    P5["Plot 3-panel and combined criticality maps"]
+    P6["Export climate criticality table"]
+  end
+
+  subgraph OUT["Outputs"]
+    O1["figures/criticality_analysis_3panel.png"]
+    O2["figures/climate_criticality_mean.png"]
+    O3["intermediate_results/VUA_Climate_Criticality_PERS.xlsx"]
+  end
+
+  IN_HAZ --> P1
+  IN_NET --> P1
+  IN_SECTOR --> P1
+  IN_CC --> P1 --> P2 --> P3 --> P4
+  P4 --> P5 --> O1
+  P4 --> P5 --> O2
+  P4 --> P6 --> O3
+  IN_BASEMAP --> P5
