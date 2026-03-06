@@ -18,10 +18,11 @@ class NetworkConfig:
     ##########################################
     # Input files
     ##########################################
+    #TODO rename var path files to be more consistent and clear
     Path_RoadNetwork = data_path / "base_network_SRB_basins.parquet"
     osm_path = data_path / "SRB.osm.pbf"
     AADT_data = data_path / "PGDS_2024.shp"
-    Network_original_full_AADT = data_path / "roads_serbia_original_full_AADT.parquet"
+    Network_original_full_AADT = data_path / "DenicaRSDP_corrected_topology.parquet"
     Original_road_network = roads_path = data_path / 'DeoniceRSDP-Jul2025..shp'
     Path_FactoryFile = data_path / "2_Factory_Company_geolocations.xlsx"
     path_to_Borders = data_path / "Borders_geocoded.xlsx"
