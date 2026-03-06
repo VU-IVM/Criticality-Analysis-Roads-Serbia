@@ -306,7 +306,7 @@ def plot_osm_network(base_network_filtered: gpd.GeoDataFrame,
                 dpi=config.figure_dpi, bbox_inches='tight')
     plt.show()
 
-def load_serbian_network_no_arcpy(config: LocalConfig) -> gpd.GeoDataFrame:
+def load_serbian_network(config: LocalConfig) -> gpd.GeoDataFrame:
     """
     Load Serbian road network from a GIS file path using GeoPandas.
     
@@ -640,7 +640,7 @@ def main():
     elif ARCPY_AVAILABLE is False:
         try:
             print("ArcGIS not available, attempting to load Serbian network from file...")
-            gdf = load_serbian_network_no_arcpy(config)        
+            gdf = load_serbian_network(config)        
         except Exception as e:
             print(f"Error loading Serbian network from file: {e}")
 
