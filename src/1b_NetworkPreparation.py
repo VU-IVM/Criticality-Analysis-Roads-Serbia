@@ -70,6 +70,7 @@ warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
 @dataclass
 class NetworkPrepConfig:
+    #TODO: rename LocalConfig class consistently
     """Configuration for network preparation and analysis."""
     
     # Output paths
