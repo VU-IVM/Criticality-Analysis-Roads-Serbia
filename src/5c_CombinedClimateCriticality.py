@@ -812,7 +812,9 @@ def print_statistics(gdf_hazards: gpd.GeoDataFrame, config: NetworkConfig) -> No
     print(f"  H: {top1['H_hazard_exposure']:.4f}, T: {top1['T_travel_disruption']:.4f}, A: {top1['A_local_accessibility']:.4f}")
 
     #Save results as Excel file
-    gdf_hazards.to_excel(config.Path_climate_criticality_results)
+    #gdf_hazards.to_excel(config.Path_climate_criticality_results)
+    gdf_hazards.to_parquet(config.intermediate_results_path / "results.parquet")
+
 
 
 

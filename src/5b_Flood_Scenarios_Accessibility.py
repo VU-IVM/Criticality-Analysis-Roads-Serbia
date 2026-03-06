@@ -245,7 +245,7 @@ def nearest_network_nodes(gdf_locations: gpd.GeoDataFrame, nodes: pd.DataFrame) 
 
     return gdf_locations['vertex_id']
 
-def map_sinks_to_nearest_network_node(Sink):
+def map_sinks_to_nearest_network_node(Sink: pd.DataFrame, nodes: pd.DataFrame) -> pd.DataFrame:
 
     nodes_sindex = shapely.STRtree(nodes.geometry)
 
@@ -254,7 +254,7 @@ def map_sinks_to_nearest_network_node(Sink):
 
     return Sink
 
-def flood_exposure_factory_accessibility(base_network, df_worldpop, Sink, Factory_criticality_folder, basins_data):
+def flood_exposure_factory_accessibility(base_network, df_worldpop, Sink, Factory_criticality_folder, basins_data, graph, country_iso3, Subregion):
 
     exposed_roads = base_network[base_network.exposed].reset_index(drop=True)
 
@@ -519,7 +519,7 @@ def get_distance_to_nearest_facility(df_population, Sink, graph) -> gpd.GeoDataF
 
 
 
-def flood_exposure_emergency_service_accessibility(df_worldpop, Sink, TheFolder, basins_data):
+def flood_exposure_emergency_service_accessibility(df_worldpop, Sink, TheFolder, basins_data, base_network, graph, country_iso3, Subregion):
 
     
     # ## Step 10: Identify exposed assets
@@ -779,7 +779,7 @@ def calculate_accessibility_by_sink_type(df_population, sinks_dict, graph, inf_r
     return df_population
 
 
-def update_column_names(df_agri):
+def update_column_names(df_agri, sinks_dict):
 
     # Rename columns to indicate baseline
     baseline_cols = {}
@@ -792,7 +792,7 @@ def update_column_names(df_agri):
     return df_agri
 
 
-def flood_exposure_analysis_agriculture(base_network, df_worldpop, TheFolder, basins_data):
+def flood_exposure_analysis_agriculture(base_network, df_worldpop, TheFolder, basins_data, graph, sinks_dict, country_iso3, Subregion):
 
      # ## Step 10: Identify exposed assets
 
@@ -1067,7 +1067,7 @@ def main():
 
     # Load border crossings (sinks) and map them to nodes
     Sink = read_road_border_data(config)
-    Sink = map_sinks_to_nearest_network_node(Sink)
+    Sink = map_sinks_to_nearest_network_node(Sink, nodes)
 
     # Compute baseline average access times (normal conditions)
     print("Calculating average access times from factories to road border crossings...")
@@ -1076,7 +1076,7 @@ def main():
     # Assess access disruption under flooding
     print("Calculating factory access times under flooding scenarios...")
     flood_exposure_factory_accessibility(
-        base_network, df_factories, Sink, Factory_criticality_folder, basins_data
+        base_network, df_factories, Sink, Factory_criticality_folder, basins_data, graph, country_iso3, Subregion
     )
 
     # ============================================================
@@ -1102,12 +1102,12 @@ def main():
     # Baseline access to borders/ports/terminals
     print("Calculating baseline agricultural accessibility to all sink types...")
     df_agri = calculate_accessibility_by_sink_type(df_agri, sinks_dict, graph)
-    df_agri = update_column_names(df_agri)
+    df_agri = update_column_names(df_agri,sinks_dict)
 
     # Flood impact on agricultural accessibility
     print("Calculating agricultural access under flooding scenarios...")
     flood_exposure_analysis_agriculture(
-        base_network, df_agri, Agriculture_criticality_folder, basins_data
+        base_network, df_agri, Agriculture_criticality_folder, basins_data, graph, sinks_dict, country_iso3, Subregion
     )
 
     # ============================================================
@@ -1129,7 +1129,7 @@ def main():
     #run accessibility analysis to fire stations under flooding
     flood_exposure_emergency_service_accessibility(
         accessibility_firefighters, sink_firefighters,
-        Fire_criticality_folder, basins_data
+        Fire_criticality_folder, basins_data, base_network, graph, country_iso3, Subregion
     )
 
     # ============================================================
@@ -1151,7 +1151,8 @@ def main():
     #run accessibility analysis to hospitals under flooding
     flood_exposure_emergency_service_accessibility(
         accessibility_hospitals, sink_hospitals,
-        Health_care_criticality_folder, basins_data
+        Health_care_criticality_folder, basins_data, 
+        base_network, graph, country_iso3, Subregion
     )
 
     # ============================================================
@@ -1173,7 +1174,8 @@ def main():
     #run accessibility analysis to police stations under flooding
     flood_exposure_emergency_service_accessibility(
         accessibility_police, sink_police,
-        Police_criticality_folder, basins_data
+        Police_criticality_folder, basins_data, 
+        base_network, graph, country_iso3, Subregion
     )
 
 

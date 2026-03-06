@@ -13,7 +13,7 @@ class NetworkConfig:
     intermediate_results_path = BASE_DIR / 'intermediate_results'
     accessibility_analysis_path = BASE_DIR / 'accessibility_analysis'
     figure_path = BASE_DIR / "figures"
-    climate_change_precipitation_folder = data_path / "Climate Change Precipitation\results"
+    climate_change_precipitation_folder = data_path / "Climate Change Precipitation" / "results"
 
     ##########################################
     # Input files
