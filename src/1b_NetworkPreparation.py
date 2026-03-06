@@ -65,6 +65,9 @@ from config.network_config import NetworkConfig
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
+#TODO: Add section for base_network_SRB_basins process and add to config file 
+
+
 @dataclass
 class NetworkPrepConfig:
     """Configuration for network preparation and analysis."""
@@ -74,7 +77,7 @@ class NetworkPrepConfig:
     figures_path = NetworkConfig.figure_path
     
     # Input file paths (for both ArcGIS and non-ArcGIS environments)
-    network_input_layer = NetworkConfig.Network_original_full_AADT
+    network_input_layer = NetworkConfig.Network_PERS_Corr
     arcgis_input_layer: Optional[str] = None
     arcgis_temp_base: Path = field(default_factory=lambda: Path(r"C:\Temp\arcgis_tmp"))
     
