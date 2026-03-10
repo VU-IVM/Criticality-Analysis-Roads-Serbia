@@ -40,6 +40,7 @@ import rioxarray as rxr
 import pyproj
 from typing import Tuple
 from config.network_config import NetworkConfig
+import rasterio
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=RuntimeWarning) # exactextract gives a warning that is invalid
@@ -333,7 +334,7 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
     
 
 
-def plot_landslides(config: NetworkConfig, country_geometry)->None:
+def plot_landslides(config: NetworkConfig, country_geometry: gpd.GeoDataFrame)->None:
     """
     Plot landslide events classified by year, with a basemap, visual styling,
     and legend.
@@ -463,6 +464,96 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
         plt.show()
 
 
+def plot_landslide_susceptibility(config: NetworkConfig, country_geometry: gpd.GeoDataFrame)->None:
+
+    with rasterio.open(config.landslide_susceptibility) as src:
+        landslide_data = src.read(1).astype(float)
+        landslide_data[landslide_data == src.nodata] = np.nan
+        landslide_bounds = src.bounds
+        landslide_crs = src.crs
+
+    baseline_roads = gpd.read_parquet(
+        config.Path_processed_road_network
+    )
+
+    # Reproject bounds to Web Mercator for display
+    from rasterio.warp import transform_bounds
+    bounds_mercator = transform_bounds(landslide_crs, "EPSG:3857",
+                                       landslide_bounds.left, landslide_bounds.bottom,
+                                       landslide_bounds.right, landslide_bounds.top)
+
+    # Define susceptibility bins and labels (discrete values: 2, 4, 6, 8, 10)
+    susc_labels = ['Very Low', 'Low', 'Moderate', 'High', 'Very High']
+    susc_colors = ['#1a9641', '#a6d96a', '#ffffbf', '#fdae61', '#d7191c']
+    susc_cmap = mcolors.ListedColormap(susc_colors)
+    susc_bounds = [1, 3, 5, 7, 9, 11]  # Boundaries around 2, 4, 6, 8, 10
+    susc_norm = mcolors.BoundaryNorm(susc_bounds, susc_cmap.N)
+
+    # Create figure
+    fig, ax = plt.subplots(1, 1, figsize=(12, 10), facecolor='white')
+
+    # Convert country outline to Web Mercator
+    serbia_mercator = country_geometry.to_crs(3857)
+    baseline_mercator = baseline_roads.to_crs(3857)
+
+    # Map discrete values to color indices explicitly
+    color_array = np.full((*landslide_data.shape, 4), np.nan)
+    value_to_color = {
+        2:  mcolors.to_rgba('#1a9641', alpha=0.75),  # Very Low
+        4:  mcolors.to_rgba('#a6d96a', alpha=0.75),  # Low
+        6:  mcolors.to_rgba('#ffffbf', alpha=0.75),  # Moderate
+        8:  mcolors.to_rgba('#fdae61', alpha=0.75),  # High
+        10: mcolors.to_rgba('#d7191c', alpha=0.75),  # Very High
+    }
+    for val, rgba in value_to_color.items():
+        mask = landslide_data == val
+        color_array[mask] = rgba
+
+    # Set NaN pixels to transparent
+    nan_mask = np.isnan(landslide_data)
+    color_array[nan_mask] = (0, 0, 0, 0)
+
+    # Plot landslide susceptibility raster
+    img = ax.imshow(
+        color_array,
+        extent=[bounds_mercator[0], bounds_mercator[2],
+                bounds_mercator[1], bounds_mercator[3]],
+        zorder=2,
+        origin='upper'
+    )
+
+    # Plot country outline
+    serbia_mercator.plot(ax=ax, facecolor='none', edgecolor='#333333',
+                        linewidth=1.5, zorder=4)
+
+    # Plot baseline road network in grey
+    baseline_mercator.plot(ax=ax, color='black', linewidth=0.4,
+                        alpha=0.5, zorder=3)
+
+    # Add basemap
+    cx.add_basemap(ax=ax, source=cx.providers.OpenStreetMap.Mapnik,
+                alpha=0.3, attribution=False)
+
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    # Create legend
+    legend_elements = [
+        Line2D([0], [0], color='black', linewidth=1, label='Road Network', alpha=0.6)
+    ] + [
+        Patch(facecolor=susc_colors[i], edgecolor='none', label=susc_labels[i])
+        for i in range(len(susc_labels))
+    ]
+
+    ax.legend(handles=legend_elements, title='Landslide Susceptibility', loc='upper right',
+            fontsize=12, title_fontsize=14,
+            frameon=True, fancybox=True, shadow=True,
+            framealpha=0.9, facecolor='white', edgecolor='#cccccc')
+
+    plt.tight_layout()
+    plt.savefig(config.figure_path / 'landslide_susceptibility_map.png', dpi=300, bbox_inches='tight')
+    if config.show_figures:
+        plt.show()
 
 
 def main():
@@ -488,6 +579,8 @@ def main():
 
     #plot and save landslide hazard map
     plot_landslides(config, country_geometry)
+
+    plot_landslide_susceptibility(config, country_geometry)
 
 
 if __name__ == "__main__":
