@@ -427,9 +427,6 @@ def plot_landslide_susceptibility(
     # Define susceptibility bins and labels (discrete values: 2, 4, 6, 8, 10)
     susc_labels = ["Very Low", "Low", "Moderate", "High", "Very High"]
     susc_colors = ["#1a9641", "#a6d96a", "#ffffbf", "#fdae61", "#d7191c"]
-    # susc_cmap = mcolors.ListedColormap(susc_colors)
-    # susc_bounds = [1, 3, 5, 7, 9, 11]  # Boundaries around 2, 4, 6, 8, 10
-    # susc_norm = mcolors.BoundaryNorm(susc_bounds, susc_cmap.N)
 
     # Create figure
     fig, ax = plt.subplots(1, 1, figsize=(12, 10), facecolor="white")
