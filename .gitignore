@@ -30,6 +30,10 @@ __pycache__/
 *.shp
 *.gpkg
 *.pbf
+*.cpg
+*.dbf
+*.prj
+*.shx
 
 # -----------------------
 # Data folders
