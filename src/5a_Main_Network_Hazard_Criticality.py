@@ -417,6 +417,7 @@ def calculate_combined_hazard(gdf_results: gpd.GeoDataFrame, gdf_vhl_flooded: gp
 
 
     gdf_hazards.to_parquet(config.Path_main_network_hazard_exposure)
+    gdf_hazards.to_file(config.Path_main_network_hazard_exposure.with_suffix('.gpkg'), driver='GPKG')
 
     return gdf_hazards
 

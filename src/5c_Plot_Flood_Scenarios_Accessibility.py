@@ -1338,9 +1338,15 @@ def plot_agriculture_increased_travel_time_to_nearest(base_network: gpd.GeoDataF
     # Create 3x1 figure
     # =============================================================================
 
+    #save as .parquet
     exposed_edges_by_type['road'].to_parquet(config.intermediate_results_path / 'road_impacts.parquet')
     exposed_edges_by_type['rail'].to_parquet(config.intermediate_results_path / 'rail_impacts.parquet')
     exposed_edges_by_type['port'].to_parquet(config.intermediate_results_path / 'port_impacts.parquet')
+
+    #save as .gpkg
+    exposed_edges_by_type['road'].to_file(config.intermediate_results_path / 'road_impacts.gpkg', driver='GPKG')
+    exposed_edges_by_type['rail'].to_file(config.intermediate_results_path / 'rail_impacts.gpkg', driver='GPKG')
+    exposed_edges_by_type['port'].to_file(config.intermediate_results_path / 'port_impacts.gpkg', driver='GPKG')
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 7))
 
@@ -1610,13 +1616,17 @@ def plot_and_save_combined_results(base_network: gpd.GeoDataFrame, config: Netwo
     def r(x, nd=0):
         return int(round(x)) if nd == 0 and pd.notna(x) else (round(x, nd) if pd.notna(x) else None)
 
-
+    #save to .parquet
     hospital_exposed_edges.to_parquet(config.intermediate_results_path / 'hospital_impacts.parquet')
     factory_exposed_edges.to_parquet(config.intermediate_results_path / 'factory_impacts.parquet')
     police_exposed_edges.to_parquet(config.intermediate_results_path / 'police_impacts.parquet')
     fire_exposed_edges.to_parquet(config.intermediate_results_path / 'fire_impacts.parquet')
     
-
+    #save to .gpkg
+    hospital_exposed_edges.to_file(config.intermediate_results_path / 'hospital_impacts.gpkg', driver='GPKG')
+    factory_exposed_edges.to_file(config.intermediate_results_path / 'factory_impacts.gpkg', driver='GPKG')
+    police_exposed_edges.to_file(config.intermediate_results_path / 'police_impacts.gpkg', driver='GPKG')
+    fire_exposed_edges.to_file(config.intermediate_results_path / 'fire_impacts.gpkg', driver='GPKG')
 
 
 
