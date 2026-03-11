@@ -3,48 +3,21 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-import seaborn as sns
-import shapely
-from pathlib import Path
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import contextily as cx
-import re
-from exactextract import exact_extract
-from tqdm import tqdm
-import damagescanner.download as download
 
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from matplotlib.patches import FancyBboxPatch
-from lonboard import viz
-from damagescanner.vector import _get_cell_area_m2
-from pyproj import Geod
-from shapely.geometry import Point, LineString
-import matplotlib.pyplot as plt
-import contextily as cx
-import pandas as pd
-import numpy as np
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Patch
 import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
-import contextily as cx
-import pandas as pd
 from matplotlib.lines import Line2D
-import matplotlib.pyplot as plt
-import contextily as cx
-import geopandas as gpd
-import pandas as pd
-from matplotlib.lines import Line2D
-import rioxarray as rxr
-import pyproj
 from typing import Tuple
 from config.network_config import NetworkConfig
+import rasterio
 
-warnings.simplefilter(action='ignore', category=FutureWarning)
-warnings.simplefilter(action='ignore', category=RuntimeWarning) # exactextract gives a warning that is invalid
-
-
+warnings.simplefilter(action="ignore", category=FutureWarning)
+warnings.simplefilter(
+    action="ignore", category=RuntimeWarning
+)  # exactextract gives a warning that is invalid
 
 
 def load_data(config: NetworkConfig) -> Tuple[xr.Dataset, gpd.GeoDataFrame]:
@@ -73,10 +46,7 @@ def load_data(config: NetworkConfig) -> Tuple[xr.Dataset, gpd.GeoDataFrame]:
     minx, miny, maxx, maxy = country.total_bounds
 
     # Load hazard raster
-    hazard = xr.open_dataset(
-        config.flood_map_RP100,
-        engine="rasterio"
-    )
+    hazard = xr.open_dataset(config.flood_map_RP100, engine="rasterio")
 
     # Clip raster to country bounding box
     hazard_clipped = hazard.rio.clip_box(
@@ -84,7 +54,6 @@ def load_data(config: NetworkConfig) -> Tuple[xr.Dataset, gpd.GeoDataFrame]:
     ).load()
 
     return hazard_clipped, country
-
 
 
 def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
@@ -113,10 +82,16 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
     flood_cmap = LinearSegmentedColormap.from_list(
         "flood_blue",
         [
-            "#f7fbff", "#deebf7", "#c6dbef", "#9ecae1",
-            "#6baed6", "#4292c6", "#2171b5", "#084594"
+            "#f7fbff",
+            "#deebf7",
+            "#c6dbef",
+            "#9ecae1",
+            "#6baed6",
+            "#4292c6",
+            "#2171b5",
+            "#084594",
         ],
-        N=256
+        N=256,
     )
 
     # Ensure CRS is defined
@@ -128,26 +103,18 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
 
     # Plot the raster
     hazard_mercator.band_data.plot(
-        ax=ax,
-        cmap=flood_cmap,
-        alpha=0.7,
-        vmin=0,
-        vmax=6,
-        add_colorbar=False
+        ax=ax, cmap=flood_cmap, alpha=0.7, vmin=0, vmax=6, add_colorbar=False
     )
 
     # Basemap
     cx.add_basemap(
-        ax=ax,
-        source=cx.providers.OpenStreetMap.Mapnik,
-        alpha=0.4,
-        attribution=False
+        ax=ax, source=cx.providers.OpenStreetMap.Mapnik, alpha=0.4, attribution=False
     )
 
     ax.axis("off")
 
     # Legend labels and colors
-    flood_labels = ['0-1m', '1-2m', '2-3m', '3-4m', '4-5m', '5m+']
+    flood_labels = ["0-1m", "1-2m", "2-3m", "3-4m", "4-5m", "5m+"]
     legend_colors = [flood_cmap(i / 5) for i in range(len(flood_labels))]
 
     legend_elements = [
@@ -156,7 +123,7 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
             label=flood_labels[i],
             edgecolor="navy",
             linewidth=0.5,
-            alpha=0.8
+            alpha=0.8,
         )
         for i in range(len(flood_labels))
     ]
@@ -172,7 +139,7 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
         shadow=True,
         framealpha=0.9,
         facecolor="white",
-        edgecolor="#cccccc"
+        edgecolor="#cccccc",
     )
 
     # Clean data for potential stats
@@ -191,7 +158,7 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
         plt.show()
 
 
-def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
+def plot_snowdrift(config: NetworkConfig, country_geometry) -> None:
     """
     Plot snow drift segments over a country's road network with length-based
     styling, basemap overlay, and legend.
@@ -215,9 +182,7 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
     """
     # Load inputs
     snow_drift = gpd.read_file(config.Path_snow_drift_data)
-    baseline_roads = gpd.read_parquet(
-        config.Path_processed_road_network
-    )
+    baseline_roads = gpd.read_parquet(config.Path_processed_road_network)
 
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 10), facecolor="white")
@@ -233,10 +198,7 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
 
     # Classify drift lengths
     drift_mercator["length_class"] = pd.cut(
-        drift_mercator["dužina_sn"],
-        bins=bins,
-        labels=labels,
-        include_lowest=True
+        drift_mercator["dužina_sn"], bins=bins, labels=labels, include_lowest=True
     )
 
     # Colors and line widths for each class
@@ -257,20 +219,10 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
 
     # Base layers
     country_mercator.plot(
-        ax=ax,
-        facecolor="none",
-        edgecolor="#333333",
-        linewidth=1.5,
-        zorder=2
+        ax=ax, facecolor="none", edgecolor="#333333", linewidth=1.5, zorder=2
     )
 
-    roads_mercator.plot(
-        ax=ax,
-        color="black",
-        linewidth=0.4,
-        alpha=0.5,
-        zorder=2
-    )
+    roads_mercator.plot(ax=ax, color="black", linewidth=0.4, alpha=0.5, zorder=2)
 
     # Snow drift lines per length class
     for label in labels:
@@ -281,15 +233,12 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
                 color=colors[label],
                 linewidth=linewidths[label],
                 alpha=0.9,
-                zorder=3
+                zorder=3,
             )
 
     # Basemap
     cx.add_basemap(
-        ax=ax,
-        source=cx.providers.OpenStreetMap.Mapnik,
-        alpha=0.3,
-        attribution=False
+        ax=ax, source=cx.providers.OpenStreetMap.Mapnik, alpha=0.3, attribution=False
     )
 
     ax.set_aspect("equal")
@@ -300,10 +249,11 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
         Line2D([0], [0], color="black", linewidth=1, label="Road Network", alpha=0.6)
     ] + [
         Line2D(
-            [0], [0],
+            [0],
+            [0],
             color=colors[label],
             linewidth=linewidths[label],
-            label=f"{label} (n={len(drift_mercator[drift_mercator['length_class'] == label])})"
+            label=f"{label} (n={len(drift_mercator[drift_mercator['length_class'] == label])})",
         )
         for label in labels
     ]
@@ -319,7 +269,7 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
         shadow=True,
         framealpha=0.9,
         facecolor="white",
-        edgecolor="#cccccc"
+        edgecolor="#cccccc",
     )
 
     # Save output
@@ -330,10 +280,8 @@ def plot_snowdrift(config: NetworkConfig, country_geometry)->None:
     if config.show_figures:
         plt.show()
 
-    
 
-
-def plot_landslides(config: NetworkConfig, country_geometry)->None:
+def plot_landslides(config: NetworkConfig, country_geometry: gpd.GeoDataFrame) -> None:
     """
     Plot landslide events classified by year, with a basemap, visual styling,
     and legend.
@@ -374,10 +322,7 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
     labels = ["< 2000", "2000-2010", "2010-2015", "2015-2020", "2020-2025"]
 
     landslides_mercator["year_class"] = pd.cut(
-        landslides_mercator["year"],
-        bins=bins,
-        labels=labels,
-        include_lowest=True
+        landslides_mercator["year"], bins=bins, labels=labels, include_lowest=True
     )
 
     # Color scheme for age classes
@@ -391,18 +336,12 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
 
     # Draw background country outline
     country_mercator.plot(
-        ax=ax,
-        facecolor="none",
-        edgecolor="#333333",
-        linewidth=1.5,
-        zorder=2
+        ax=ax, facecolor="none", edgecolor="#333333", linewidth=1.5, zorder=2
     )
 
     # Plot landslide points by class
     for label in labels:
-        subset = landslides_mercator[
-            landslides_mercator["year_class"] == label
-        ]
+        subset = landslides_mercator[landslides_mercator["year_class"] == label]
         if len(subset) > 0:
             subset.plot(
                 ax=ax,
@@ -411,15 +350,12 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
                 edgecolor="#333333",
                 linewidth=0.3,
                 alpha=0.8,
-                zorder=3
+                zorder=3,
             )
 
     # Add basemap
     cx.add_basemap(
-        ax=ax,
-        source=cx.providers.OpenStreetMap.Mapnik,
-        alpha=0.3,
-        attribution=False
+        ax=ax, source=cx.providers.OpenStreetMap.Mapnik, alpha=0.3, attribution=False
     )
 
     ax.set_aspect("equal")
@@ -428,14 +364,15 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
     # Legend entries
     legend_elements = [
         Line2D(
-            [0], [0],
+            [0],
+            [0],
             marker="o",
             color="w",
             markerfacecolor=colors[label],
             markersize=10,
             markeredgecolor="#333333",
             markeredgewidth=0.3,
-            label=f"{label} (n={len(landslides_mercator[landslides_mercator['year_class'] == label])})"
+            label=f"{label} (n={len(landslides_mercator[landslides_mercator['year_class'] == label])})",
         )
         for label in labels
     ]
@@ -451,7 +388,7 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
         shadow=True,
         framealpha=0.9,
         facecolor="white",
-        edgecolor="#cccccc"
+        edgecolor="#cccccc",
     )
 
     # Save figure
@@ -463,6 +400,117 @@ def plot_landslides(config: NetworkConfig, country_geometry)->None:
         plt.show()
 
 
+def plot_landslide_susceptibility(
+    config: NetworkConfig, country_geometry: gpd.GeoDataFrame
+) -> None:
+
+    with rasterio.open(config.landslide_susceptibility) as src:
+        landslide_data = src.read(1).astype(float)
+        landslide_data[landslide_data == src.nodata] = np.nan
+        landslide_bounds = src.bounds
+        landslide_crs = src.crs
+
+    baseline_roads = gpd.read_parquet(config.Path_processed_road_network)
+
+    # Reproject bounds to Web Mercator for display
+    from rasterio.warp import transform_bounds
+
+    bounds_mercator = transform_bounds(
+        landslide_crs,
+        "EPSG:3857",
+        landslide_bounds.left,
+        landslide_bounds.bottom,
+        landslide_bounds.right,
+        landslide_bounds.top,
+    )
+
+    # Define susceptibility bins and labels (discrete values: 2, 4, 6, 8, 10)
+    susc_labels = ["Very Low", "Low", "Moderate", "High", "Very High"]
+    susc_colors = ["#1a9641", "#a6d96a", "#ffffbf", "#fdae61", "#d7191c"]
+
+    # Create figure
+    fig, ax = plt.subplots(1, 1, figsize=(12, 10), facecolor="white")
+
+    # Convert country outline to Web Mercator
+    serbia_mercator = country_geometry.to_crs(3857)
+    baseline_mercator = baseline_roads.to_crs(3857)
+
+    # Map discrete values to color indices explicitly
+    color_array = np.full((*landslide_data.shape, 4), np.nan)
+    value_to_color = {
+        2: mcolors.to_rgba("#1a9641", alpha=0.75),  # Very Low
+        4: mcolors.to_rgba("#a6d96a", alpha=0.75),  # Low
+        6: mcolors.to_rgba("#ffffbf", alpha=0.75),  # Moderate
+        8: mcolors.to_rgba("#fdae61", alpha=0.75),  # High
+        10: mcolors.to_rgba("#d7191c", alpha=0.75),  # Very High
+    }
+    for val, rgba in value_to_color.items():
+        mask = landslide_data == val
+        color_array[mask] = rgba
+
+    # Set NaN pixels to transparent
+    nan_mask = np.isnan(landslide_data)
+    color_array[nan_mask] = (0, 0, 0, 0)
+
+    # Plot landslide susceptibility raster
+    ax.imshow(
+        color_array,
+        extent=[
+            bounds_mercator[0],
+            bounds_mercator[2],
+            bounds_mercator[1],
+            bounds_mercator[3],
+        ],
+        zorder=2,
+        origin="upper",
+    )
+
+    # Plot country outline
+    serbia_mercator.plot(
+        ax=ax, facecolor="none", edgecolor="#333333", linewidth=1.5, zorder=4
+    )
+
+    # Plot baseline road network in grey
+    baseline_mercator.plot(ax=ax, color="black", linewidth=0.4, alpha=0.5, zorder=3)
+
+    # Add basemap
+    cx.add_basemap(
+        ax=ax, source=cx.providers.OpenStreetMap.Mapnik, alpha=0.3, attribution=False
+    )
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    # Create legend
+    legend_elements = [
+        Line2D([0], [0], color="black", linewidth=1, label="Road Network", alpha=0.6)
+    ] + [
+        Patch(facecolor=susc_colors[i], edgecolor="none", label=susc_labels[i])
+        for i in range(len(susc_labels))
+    ]
+
+    ax.legend(
+        handles=legend_elements,
+        title="Landslide Susceptibility",
+        loc="upper right",
+        fontsize=12,
+        title_fontsize=14,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="#cccccc",
+    )
+
+    plt.tight_layout()
+    plt.savefig(
+        config.figure_path / "landslide_susceptibility_map.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    if config.show_figures:
+        plt.show()
 
 
 def main():
@@ -477,17 +525,19 @@ def main():
     # Initialize configuration
     config = NetworkConfig()
 
-    #load flood hazard data and country outline
+    # load flood hazard data and country outline
     hazard_country, country_geometry = load_data(config)
 
-    #plot and save flood hazard map
+    # plot and save flood hazard map
     plot_flood_hazard_map(config, hazard_country)
 
-    #plot and save snowdrift hazard map
+    # plot and save snowdrift hazard map
     plot_snowdrift(config, country_geometry)
 
-    #plot and save landslide hazard map
+    # plot and save landslide hazard map
     plot_landslides(config, country_geometry)
+
+    plot_landslide_susceptibility(config, country_geometry)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@ class NetworkConfig:
     Path_snow_drift_data = data_path / "snezni_nanosi_studije.shp"
     Path_landslide_data = data_path / "Nestabilne_pojave.shp"
     Path_flooding_climate_change = data_path / "disEnsemble_highExtremes.nc"
+    landslide_susceptibility = data_path / "landslide_susceptibility.tif"
     
 
     #Paths for intermediate results
