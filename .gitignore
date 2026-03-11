@@ -34,6 +34,7 @@ __pycache__/
 *.dbf
 *.prj
 *.shx
+*.html
 
 # -----------------------
 # Data folders
