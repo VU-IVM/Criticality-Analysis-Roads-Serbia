@@ -639,6 +639,7 @@ def save_criticality_results(
     output_cols = [c for c in preferred_columns if c in gdf_results.columns]
     out_path = config.intermediate_path / 'criticality_results.parquet'
     gdf_results[output_cols].to_parquet(out_path)
+    gdf_results[output_cols].to_file(config.intermediate_path / 'criticality_results.gpkg')
     _log(f"Criticality results saved to {out_path.resolve()}")
 
 

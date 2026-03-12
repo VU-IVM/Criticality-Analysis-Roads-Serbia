@@ -732,22 +732,32 @@ def save_accessibilty_results(config: NetworkConfig, df_worldpop, Sink, facility
     if facility_type == "firefighters":
         df_worldpop.to_parquet(config.Path_firefighter_accessibilty)
         gpd.GeoDataFrame(Sink).to_parquet(config.Path_firefighters_sink)
+        df_worldpop.to_file(config.Path_firefighter_accessibilty.with_suffix('.gpkg'), driver='GPKG')
+        gpd.GeoDataFrame(Sink).to_file(config.Path_firefighters_sink.with_suffix('.gpkg'), driver='GPKG')
 
     elif facility_type == "hospitals":
         df_worldpop.to_parquet(config.Path_hospital_accessibilty)
         gpd.GeoDataFrame(Sink).to_parquet(config.Path_hospital_sink)
+        df_worldpop.to_file(config.Path_hospital_accessibilty.with_suffix('.gpkg'), driver='GPKG')
+        gpd.GeoDataFrame(Sink).to_file(config.Path_hospital_sink.with_suffix('.gpkg'), driver='GPKG')
 
     elif facility_type == "police":
         df_worldpop.to_parquet(config.Path_police_accessibilty)
         gpd.GeoDataFrame(Sink).to_parquet(config.Path_police_sink)
-    
+        df_worldpop.to_file(config.Path_police_accessibilty.with_suffix('.gpkg'), driver='GPKG')
+        gpd.GeoDataFrame(Sink).to_file(config.Path_police_sink.with_suffix('.gpkg'), driver='GPKG')
+
     elif facility_type == "factories":
         df_worldpop.to_parquet(config.Path_factory_accessibility)
         gpd.GeoDataFrame(Sink).to_parquet(config.Path_factory_sink)
-    
+        df_worldpop.to_file(config.Path_factory_accessibility.with_suffix('.gpkg'), driver='GPKG')
+        gpd.GeoDataFrame(Sink).to_file(config.Path_factory_sink.with_suffix('.gpkg'), driver='GPKG')
+
     elif facility_type == "agriculture":
         df_worldpop.to_parquet(config.Path_agriculture_accessibility)
         gpd.GeoDataFrame(Sink).to_parquet(config.Path_agriculture_sink)
+        df_worldpop.to_file(config.Path_agriculture_accessibility.with_suffix('.gpkg'), driver='GPKG')
+        gpd.GeoDataFrame(Sink).to_file(config.Path_agriculture_sink.with_suffix('.gpkg'), driver='GPKG')
 
     else:
         raise ValueError(

@@ -112,7 +112,10 @@ def max_depth(row):
     """
     Return the maximum flood depth for a given road segment.
     """
-    return np.max(row["values"])
+    values = row["values"]
+    if values is None or len(values) == 0:
+        return 0 
+    return np.max(values)
 
 
 def calculate_flood_impact(gdf_results: gpd.GeoDataFrame, flood_data: xr.Dataset) -> gpd.GeoDataFrame:
@@ -417,6 +420,7 @@ def calculate_combined_hazard(gdf_results: gpd.GeoDataFrame, gdf_vhl_flooded: gp
 
 
     gdf_hazards.to_parquet(config.Path_main_network_hazard_exposure)
+    gdf_hazards.to_file(config.Path_main_network_hazard_exposure.with_suffix('.gpkg'), driver='GPKG')
 
     return gdf_hazards
 

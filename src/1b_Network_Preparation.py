@@ -898,6 +898,7 @@ def create_igraph_and_export(base_network: gpd.GeoDataFrame,
     edges_gdf = edges.reset_index(drop=True).set_crs(AADT_Serbia.crs)
     edges_gdf.to_parquet(config.output_path / 'PERS_directed_final.parquet')
     edges_gdf.to_file(config.output_path / 'PERS_directed_final.shp')
+    edges_gdf.to_file(config.output_path / 'PERS_directed_final.gpkg')
     
     directed_final = (config.output_path / "PERS_directed_final.shp").resolve()
     if ARCPY_AVAILABLE:

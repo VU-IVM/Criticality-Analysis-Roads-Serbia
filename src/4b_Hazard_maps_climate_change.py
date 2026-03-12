@@ -283,6 +283,7 @@ def plot_basins(basins_3035, config):
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
     plt.savefig(config.figure_path / "Change in return period.png", dpi=300, bbox_inches="tight")
     basins_3857.to_parquet(config.Path_future_floods_change_RP)
+    basins_3857.to_file(config.Path_future_floods_change_RP.with_suffix('.gpkg'), driver='GPKG')
     if config.show_figures:
         plt.show()
 
@@ -381,7 +382,9 @@ def plot_effect_on_roads(roads, roads_rp, config):
 
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
     plt.savefig(config.figure_path / "Change in return period experienced by roads.png", dpi=300, bbox_inches="tight")
+    #save to .parquet and .gpkg
     roads_rp.to_parquet(config.Path_future_flooding_roads)
+    roads_rp.to_file(config.Path_future_flooding_roads.with_suffix('.gpkg'), driver='GPKG')
     if config.show_figures:
         plt.show()
 
@@ -604,9 +607,10 @@ def calculate_future_max_precipitation(config, roads, variables):
                 }
 
                 #save result per rcp and time period 
-                file_name = "change in maximum daily precipitation rcp " + rcp + " period "+ period + ".paquet"
-                file_text = config.intermediate_results_path / file_name
-                roads_with_agreement.to_parquet(file_text)
+                file_name = "change in maximum daily precipitation rcp " + rcp + " period " + period + ".parquet"
+                file_path = config.intermediate_results_path / file_name
+                roads_with_agreement.to_parquet(file_path)
+                roads_with_agreement.to_file(file_path.with_suffix('.gpkg'), driver='GPKG')
 
 
     return results
