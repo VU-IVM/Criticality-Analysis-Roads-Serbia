@@ -392,7 +392,8 @@ def plot_osm_network(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def load_serbian_network(config: LocalConfig) -> gpd.GeoDataFrame:
@@ -518,7 +519,8 @@ def plot_serbian_network(gdf: gpd.GeoDataFrame, config: LocalConfig) -> None:
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def plot_network_comparison(
@@ -657,7 +659,8 @@ def plot_network_comparison(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def plot_road_length_statistics(
@@ -766,7 +769,8 @@ def plot_road_length_statistics(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def main():

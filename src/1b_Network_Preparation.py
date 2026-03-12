@@ -882,7 +882,8 @@ def plot_aadt_categories_combined(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def plot_total_aadt_map(
@@ -943,7 +944,8 @@ def plot_total_aadt_map(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def create_directed_network(

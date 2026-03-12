@@ -291,7 +291,8 @@ def plot_access_times(
     )
 
     plt.savefig(config.Path_factory_acces_avg, dpi=200, bbox_inches="tight")
-    plt.show()
+    if config.show_figures:
+        plt.show()
 
 
 def print_statistics(

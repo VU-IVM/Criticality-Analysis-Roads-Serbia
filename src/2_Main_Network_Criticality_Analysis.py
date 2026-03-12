@@ -818,7 +818,8 @@ def plot_demand_heatmap(
     plt.xticks(rotation=45, ha="left")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 # ===========================================================================
@@ -962,7 +963,8 @@ def plot_spof_disruption_maps(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def plot_spof_person_maps(
@@ -1035,7 +1037,8 @@ def plot_spof_person_maps(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 # ===========================================================================
@@ -1088,7 +1091,8 @@ def plot_road_type_boxplots(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 def plot_road_type_violins(
@@ -1137,7 +1141,8 @@ def plot_road_type_violins(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 # ===========================================================================
@@ -1200,7 +1205,8 @@ def plot_aadt_vs_criticality(
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
-    plt.show()
+    if NetworkConfig.show_figures:
+        plt.show()
 
 
 # ===========================================================================
