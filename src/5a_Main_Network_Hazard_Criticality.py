@@ -92,7 +92,10 @@ def max_depth(row):
     """
     Return the maximum flood depth for a given road segment.
     """
-    return np.max(row["values"])
+    values = row["values"]
+    if values is None or len(values) == 0:
+        return 0 
+    return np.max(values)
 
 
 def calculate_flood_impact(
