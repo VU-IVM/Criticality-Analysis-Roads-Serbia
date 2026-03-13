@@ -1,5 +1,4 @@
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -8,22 +7,24 @@ class NetworkConfig:
     """Configuration for accesibility analysis and visualization."""
 
     # folder paths
-    BASE_DIR = Path(__file__).resolve().parent.parent.parent  
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
     data_path = BASE_DIR / "input_files"
-    intermediate_results_path = BASE_DIR / 'intermediate_results'
-    accessibility_analysis_path = BASE_DIR / 'accessibility_analysis'
+    intermediate_results_path = BASE_DIR / "intermediate_results"
+    accessibility_analysis_path = BASE_DIR / "accessibility_analysis"
     figure_path = BASE_DIR / "figures"
-    climate_change_precipitation_folder = data_path / "Climate Change Precipitation" / "results"
+    climate_change_precipitation_folder = (
+        data_path / "Climate Change Precipitation" / "results"
+    )
 
     ##########################################
     # Input files
     ##########################################
-    #TODO rename var path files to be more consistent and clear
+    # TODO rename var path files to be more consistent and clear
     Path_RoadNetwork = data_path / "base_network_SRB_basins.parquet"
     osm_path = data_path / "SRB.osm.pbf"
     AADT_data = data_path / "PGDS_2024.shp"
     Network_PERS_Corr = data_path / "DeoniceRSDP-Jul2025_corrected_topology.parquet"
-    Original_road_network = roads_path = data_path / 'DeoniceRSDP-Jul2025..shp'
+    Original_road_network = roads_path = data_path / "DeoniceRSDP-Jul2025..shp"
     Path_FactoryFile = data_path / "2_Factory_Company_geolocations.xlsx"
     path_to_Borders = data_path / "Borders_geocoded.xlsx"
     Path_AgriFile = data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
@@ -35,7 +36,9 @@ class NetworkConfig:
     basins_shapefile = data_path / "hybas_eu_lev09_v1c.shp"
     flood_map_RP100 = data_path / "Europe_RP100_filled_depth.tif"
     world_boundaries = data_path / "ne_10m_admin_0_countries.shp"
-    Path_agriculture_input = data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
+    Path_agriculture_input = (
+        data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
+    )
     Path_snow_drift_data = data_path / "snezni_nanosi_studije.shp"
     Path_landslide_data = data_path / "Nestabilne_pojave.shp"
     Path_flooding_climate_change = data_path / "disEnsemble_highExtremes.nc"
