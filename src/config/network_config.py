@@ -41,10 +41,18 @@ class NetworkConfig:
     Path_flooding_climate_change = data_path / "disEnsemble_highExtremes.nc"
     landslide_susceptibility = data_path / "landslide_susceptibility.tif"
     
+    #####################################################
+    # Paths for intermediate results
+    #####################################################
 
-    #Paths for intermediate results
+    # processed road network (produced in 1b)
     Path_processed_road_network = intermediate_results_path / "PERS_directed_final.parquet"
     Path_processed_road_network_shp = intermediate_results_path / "PERS_directed_final.shp"
+
+    #network criticality (single point of failure analysis) (produced in 2)
+    Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
+
+    # baseline accessibility results
     Path_firefighter_accessibilty = intermediate_results_path / 'firefighter_settle_results.parquet'
     Path_firefighters_sink = intermediate_results_path / 'firefighters.parquet'
     Path_hospital_accessibilty = intermediate_results_path / 'hospital_accessibility_results.parquet'
@@ -55,12 +63,18 @@ class NetworkConfig:
     Path_factory_sink = intermediate_results_path / 'factories_sinks.parquet'
     Path_agriculture_accessibility = intermediate_results_path / 'agriculture_accessibility.parquet'
     Path_agriculture_sink = intermediate_results_path / 'agriculture_sinks.parquet'
+
+    # hazards under climate change (produced in 4b)
     Path_flood_statistics_per_basin = intermediate_results_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
     Path_future_floods_change_RP = intermediate_results_path / "Future Floods change in RP.parquet"
     Path_future_flooding_roads = intermediate_results_path / "Future Floods change in RP experienced by roads.parquet"
-    Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
+    Path_precipitation_change_rcp_8_5_far_future = intermediate_results_path / 'change in maximum daily precipitation rcp 85 period 2.parquet'
+   
+    # combined list of all roads that are exposed to at least one hazard, its intensity and the criticality
+    # of each road (produced in 5a)
     Path_main_network_hazard_exposure = intermediate_results_path / "main_network_hazard_exposure.parquet"
 
+    # impacts of flooding on accessibility (produced in 5c)
     Path_hospital_impacts = intermediate_results_path / 'hospital_impacts.parquet'
     Path_factory_impacts = intermediate_results_path / 'factory_impacts.parquet'
     Path_police_impacts = intermediate_results_path / 'police_impacts.parquet'
@@ -68,7 +82,8 @@ class NetworkConfig:
     Path_road_border_impacts = intermediate_results_path / 'road_impacts.parquet'
     Path_port_impacts = intermediate_results_path / 'port_impacts.parquet'
     Path_railway_impacts = intermediate_results_path / 'rail_impacts.parquet'
-    Path_precipitation_change_rcp_8_5_far_future = intermediate_results_path / 'change in maximum daily precipitation rcp 85 period 2.paquet'
+
+    #final climate criticality ranking (produced in 5d, also saved as parquet and gpkg)
     Path_climate_criticality_results = intermediate_results_path / 'VUA_Climate_Criticality_PERS.xlsx'
 
 
@@ -84,7 +99,8 @@ class NetworkConfig:
     Path_hospital_access_map = figure_path / 'hospital_access.png'
     Path_police_station_access_map = figure_path / 'police_station_access.png'
     
-
-    #Flags to activate/ deactivate outputs
-    show_figures = True #Flag to set whether plots will be shown in a pop up window or not
+    ######################################################
+    # Flags to activate/ deactivate outputs
+    ######################################################
+    show_figures = False #Flag to set whether plots will be shown in a pop up window or not
     print_statistics = True #prints summary of the analysis to the console
