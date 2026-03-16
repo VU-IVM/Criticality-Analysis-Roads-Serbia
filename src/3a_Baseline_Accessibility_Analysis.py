@@ -927,8 +927,8 @@ def print_statistics_emergency_accessibility(
 
     Behavior
     --------
-    - Bins access times (in hours) into categories: 0–15, 15–30, 30–60, 60–90,
-    90–120, >120 minutes; missing/invalid are labeled 'Not Accessible'.
+    - Bins access times (in hours) into categories: 0-15, 15-30, 30-60, 60-90,
+    90-120, >120 minutes; missing/invalid are labeled 'Not Accessible'.
     - Prints, per service:
     * facility and settlement counts,
     * access-time summary (mean/median/std/min/max, in minutes),

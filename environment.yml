@@ -119,6 +119,7 @@ dependencies:
   - liblapack=3.11.0
   - liblzma=5.8.2
   - libmpdec=4.0.0
+  - libnetcdf=4.9.3
   - libnghttp2=1.67.0
   - libopenblas=0.3.30
   - libopentelemetry-cpp=1.21.0
