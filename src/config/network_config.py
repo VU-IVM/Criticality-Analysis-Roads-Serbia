@@ -10,6 +10,7 @@ class NetworkConfig:
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     data_path = BASE_DIR / "input_files"
     intermediate_results_path = BASE_DIR / "intermediate_results"
+    results_path = BASE_DIR / "results"
     accessibility_analysis_path = BASE_DIR / "accessibility_analysis"
     figure_path = BASE_DIR / "figures"
     climate_change_precipitation_folder = (
@@ -87,7 +88,7 @@ class NetworkConfig:
     Path_railway_impacts = intermediate_results_path / 'rail_impacts.parquet'
 
     #final climate criticality ranking (produced in 5d, also saved as parquet and gpkg)
-    Path_climate_criticality_results = intermediate_results_path / 'VUA_Climate_Criticality_PERS.xlsx'
+    Path_climate_criticality_results = results_path / 'VUA_Climate_Criticality_PERS.xlsx'
 
 
 

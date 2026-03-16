@@ -838,7 +838,7 @@ def save_accessibilty_results(
         df_worldpop.to_file(
             config.Path_firefighter_accessibilty.with_suffix(".gpkg"), driver="GPKG"
         )
-        gpd.GeoDataFrame(Sink).to_file(
+        gpd.GeoDataFrame(Sink, geometry="geometry", crs=df_worldpop.crs).to_file(
             config.Path_firefighters_sink.with_suffix(".gpkg"), driver="GPKG"
         )
 
@@ -848,7 +848,7 @@ def save_accessibilty_results(
         df_worldpop.to_file(
             config.Path_hospital_accessibilty.with_suffix(".gpkg"), driver="GPKG"
         )
-        gpd.GeoDataFrame(Sink).to_file(
+        gpd.GeoDataFrame(Sink, geometry="geometry", crs=df_worldpop.crs).to_file(
             config.Path_hospital_sink.with_suffix(".gpkg"), driver="GPKG"
         )
 
@@ -858,7 +858,7 @@ def save_accessibilty_results(
         df_worldpop.to_file(
             config.Path_police_accessibilty.with_suffix(".gpkg"), driver="GPKG"
         )
-        gpd.GeoDataFrame(Sink).to_file(
+        gpd.GeoDataFrame(Sink, geometry="geometry", crs=df_worldpop.crs).to_file(
             config.Path_police_sink.with_suffix(".gpkg"), driver="GPKG"
         )
 
@@ -868,7 +868,7 @@ def save_accessibilty_results(
         df_worldpop.to_file(
             config.Path_factory_accessibility.with_suffix(".gpkg"), driver="GPKG"
         )
-        gpd.GeoDataFrame(Sink).to_file(
+        gpd.GeoDataFrame(Sink, geometry="geometry", crs=df_worldpop.crs).to_file(
             config.Path_factory_sink.with_suffix(".gpkg"), driver="GPKG"
         )
 
@@ -878,7 +878,7 @@ def save_accessibilty_results(
         df_worldpop.to_file(
             config.Path_agriculture_accessibility.with_suffix(".gpkg"), driver="GPKG"
         )
-        gpd.GeoDataFrame(Sink).to_file(
+        gpd.GeoDataFrame(Sink, geometry="geometry", crs=df_worldpop.crs).to_file(
             config.Path_agriculture_sink.with_suffix(".gpkg"), driver="GPKG"
         )
 
