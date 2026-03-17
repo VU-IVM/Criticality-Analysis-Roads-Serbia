@@ -8,9 +8,11 @@ class NetworkConfig:
 
     # folder paths
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
     data_path = BASE_DIR / "input_files"
     intermediate_results_path = BASE_DIR / "intermediate_results"
     results_path = BASE_DIR / "results"
+
     accessibility_analysis_path = BASE_DIR / "accessibility_analysis"
     figure_path = BASE_DIR / "figures"
     climate_change_precipitation_folder = (
@@ -53,7 +55,7 @@ class NetworkConfig:
     Path_processed_road_network = intermediate_results_path / "PERS_directed_final.parquet"
     Path_processed_road_network_shp = intermediate_results_path / "PERS_directed_final.shp"
 
-    #network criticality (single point of failure analysis) (produced in 2)
+    #network criticality (single point of failure analysis) (produced in 2). Also saved to results folder.
     Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
 
     # baseline accessibility results

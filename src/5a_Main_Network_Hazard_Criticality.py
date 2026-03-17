@@ -505,6 +505,9 @@ def calculate_combined_hazard(
         config.Path_main_network_hazard_exposure.with_suffix(".gpkg"), driver="GPKG"
     )
 
+    #save parquet and gpkg to results folder 
+    gdf_hazards.to_file(config.results_path / config.Path_main_network_hazard_exposure.with_suffix(".gpkg").name, driver="GPKG")
+
     return gdf_hazards
 
 
