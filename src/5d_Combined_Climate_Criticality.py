@@ -1145,11 +1145,16 @@ def print_statistics(gdf_hazards: gpd.GeoDataFrame, config: NetworkConfig) -> No
 
     # Save results as Excel file
     gdf_hazards.to_excel(config.Path_climate_criticality_results)
+    #Save files as parquet and gpkg
     gdf_hazards.to_parquet(
-        config.intermediate_results_path / "VUA_Climate_Criticality_PERS.parquet"
+        config.intermediate_results_path / config.Path_climate_criticality_results.with_suffix(".parquet").name
     )
     gdf_hazards.to_file(
-        config.intermediate_results_path / "VUA_Climate_Criticality_PERS.gpkg",
+        config.intermediate_results_path / config.Path_climate_criticality_results.with_suffix(".gpkg").name,
+        driver="GPKG",
+    )
+    gdf_hazards.to_file(
+        config.results_path / config.Path_climate_criticality_results.with_suffix(".gpkg").name,
         driver="GPKG",
     )
 
