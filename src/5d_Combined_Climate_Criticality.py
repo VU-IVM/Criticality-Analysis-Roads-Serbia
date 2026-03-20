@@ -75,6 +75,29 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
     gdf_hazards = gpd.read_parquet(config.Path_main_network_hazard_exposure)
     gpd.read_parquet(config.Path_processed_road_network)
 
+    # Load all critical roads (includes roads with and without hazard exposure)
+    gdf_all_critical = gpd.read_parquet(
+        r"C:\Users\yma794\Documents\Serbia\Criticality-Analysis-Roads-Serbia\intermediate_results\criticality_results.parquet"
+    ).to_crs(gdf_hazards.crs)
+
+    for col in ['oznaka_deo', 'oznaka_put', 'pocetna_st', 'zavrsna_st']:
+        print(f"\n--- {col} ---")
+        print(f"  gdf_all_critical: {gdf_all_critical[col].nunique()} unique / {len(gdf_all_critical)} total, nulls: {gdf_all_critical[col].isna().sum()}")
+        print(f"  gdf_hazards:      {gdf_hazards[col].nunique()} unique / {len(gdf_hazards)} total, nulls: {gdf_hazards[col].isna().sum()}")
+    # Merge so that roads only in the criticality results are also included.
+    # A left join on gdf_all_critical ensures no critical road is dropped,
+    # while hazard columns are NaN for roads with no hazard exposure.
+    # Keep only the hazard-specific columns from gdf_hazards to avoid conflicts
+    hazard_only_cols = [col for col in gdf_hazards.columns 
+                        if col not in gdf_all_critical.columns or col == "geometry"]
+
+    gdf_hazards = gpd.sjoin(
+        gdf_all_critical,
+        gdf_hazards[hazard_only_cols],
+        how="left",
+        predicate="intersects",
+    ).drop(columns=["index_right"], errors="ignore")
+
     # Load results of road criticality analysis for emergency services and economic sectors
     hospital_exposed_edges = gpd.read_parquet(config.Path_hospital_impacts).to_crs(
         gdf_hazards.crs
@@ -968,6 +991,18 @@ def print_statistics(gdf_hazards: gpd.GeoDataFrame, config: NetworkConfig) -> No
     print(
         f"  H: {top1['H_hazard_exposure']:.4f}, T: {top1['T_travel_disruption']:.4f}, A: {top1['A_local_accessibility']:.4f}"
     )
+
+    print(f"Rows before cleaning: {len(gdf_hazards)}")
+
+    gdf_hazards = gdf_hazards.dropna(subset=["oznaka_deo"])
+    print(f"Rows after dropping invalid oznaka_deo: {len(gdf_hazards)}")
+
+    gdf_hazards = gdf_hazards.drop_duplicates()
+    print(f"Rows after dropping exact duplicates (including geometry): {len(gdf_hazards)}")
+
+    non_geom_cols = [col for col in gdf_hazards.columns if col != "geometry"]
+    gdf_hazards = gdf_hazards.drop_duplicates(subset=non_geom_cols)
+    print(f"Rows after dropping duplicates (excluding geometry): {len(gdf_hazards)}")
 
     # Save results as Excel file
     gdf_hazards.to_excel(config.Path_climate_criticality_results)
