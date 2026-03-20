@@ -242,7 +242,58 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
     return gdf_hazards
 
  
+def clean_data(gdf_hazards: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """
+    Clean a GeoDataFrame of hazard road segments by removing invalid, duplicate,
+    and negligibly short entries.
 
+    Cleaning steps applied in order:
+        1. Drop rows with missing ``oznaka_deo`` values.
+        2. Drop fully identical duplicate rows (including geometry).
+        3. Drop duplicate rows based on non-geometry columns only.
+        4. Drop short segments (road_length < 0.05 km) where ``oznaka_deo``
+           appears more than once, provided at least one other row in that group
+           would remain — ensuring no unique ``oznaka_deo`` entry is lost.
+
+    Progress is printed to stdout after each step.
+
+    Args:
+        gdf_hazards: Input GeoDataFrame containing road hazard segments.
+                     Expected to have columns ``oznaka_deo`` (road section identifier)
+                     and ``road_length`` (segment length in km).
+
+    Returns:
+        Cleaned GeoDataFrame with invalid, duplicate, and negligibly short
+        segments removed.
+    """
+    print(f"Rows before cleaning: {len(gdf_hazards)}")
+
+    gdf_hazards = gdf_hazards.dropna(subset=["oznaka_deo"])
+    print(f"Rows after dropping invalid oznaka_deo: {len(gdf_hazards)}")
+
+    gdf_hazards = gdf_hazards.drop_duplicates()
+    print(f"Rows after dropping exact duplicates (including geometry): {len(gdf_hazards)}")
+
+    non_geom_cols = [col for col in gdf_hazards.columns if col != "geometry"]
+    gdf_hazards = gdf_hazards.drop_duplicates(subset=non_geom_cols)
+    print(f"Rows after dropping duplicates (excluding geometry): {len(gdf_hazards)}")
+
+    #drop all segments that are shorter than 50m and that don't cause an oznaka_deo entry to be lost entirely
+    duplicated_mask = gdf_hazards["oznaka_deo"].duplicated(keep=False)
+    short_mask = gdf_hazards["road_length"] < 0.05
+
+    # For each oznaka_deo, check if at least one row would survive (i.e. has road_length >= threshold)
+    has_survivor = gdf_hazards.groupby("oznaka_deo")["road_length"].transform(
+        lambda x: (x >= 0.05).any()
+    )
+
+    # Only drop if: it's a duplicate oznaka_deo AND it's short AND its group has a survivor
+    drop_mask = duplicated_mask & short_mask & has_survivor
+
+    gdf_hazards = gdf_hazards[~drop_mask]
+    print(f"Rows after dropping sections with double oznaka_deo that are shorter than 50m: {len(gdf_hazards)}")
+
+    return gdf_hazards
 
 
 def calculate_climate_criticaliy_metric(
@@ -1091,17 +1142,6 @@ def print_statistics(gdf_hazards: gpd.GeoDataFrame, config: NetworkConfig) -> No
         f"  H: {top1['H_hazard_exposure']:.4f}, T: {top1['T_travel_disruption']:.4f}, A: {top1['A_local_accessibility']:.4f}"
     )
 
-    print(f"Rows before cleaning: {len(gdf_hazards)}")
-
-    gdf_hazards = gdf_hazards.dropna(subset=["oznaka_deo"])
-    print(f"Rows after dropping invalid oznaka_deo: {len(gdf_hazards)}")
-
-    gdf_hazards = gdf_hazards.drop_duplicates()
-    print(f"Rows after dropping exact duplicates (including geometry): {len(gdf_hazards)}")
-
-    non_geom_cols = [col for col in gdf_hazards.columns if col != "geometry"]
-    gdf_hazards = gdf_hazards.drop_duplicates(subset=non_geom_cols)
-    print(f"Rows after dropping duplicates (excluding geometry): {len(gdf_hazards)}")
 
     # Save results as Excel file
     gdf_hazards.to_excel(config.Path_climate_criticality_results)
@@ -1132,8 +1172,11 @@ def main():
     # Load hazard exposure + service/economic criticality + climate change layers
     gdf_hazards = load_and_preprocess_criticality_data(config)
 
+    # remove rows from the data that are not relevant
+    gdf_hazards_clean = clean_data(gdf_hazards)
+
     # Compute normalized sub-indices (H, T, A) and combined climate criticality
-    climate_criticality = calculate_climate_criticaliy_metric(gdf_hazards)
+    climate_criticality = calculate_climate_criticaliy_metric(gdf_hazards_clean)
 
     # Plot 3-panel figure for the sub-indices
     plot_climate_criticality_components(climate_criticality, config)
