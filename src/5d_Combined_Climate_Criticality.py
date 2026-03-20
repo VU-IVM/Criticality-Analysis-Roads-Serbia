@@ -20,6 +20,34 @@ from config.network_config import NetworkConfig
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
+# Metrics to apply log(x+1) transform to before min-max normalization.
+# Applied consistently to all continuous metrics to avoid introducing a
+# comparison bias between sub-indices. The one exception is landslide_exposure,
+# which is binary (0/1) — log(x+1) would map it to {0, log(2)}, which is
+# meaningless and inconsistent with its role as a presence indicator.
+LOG_TRANSFORM_METRICS = [
+    # Hazard exposure
+    "flood_depth",
+    "future_rainfall_change",
+    "future_flood_change",
+    "snow_drift",
+    # Travel disruption (originally flagged — skewness 6–14)
+    "phl",
+    "thl",
+    "pkl",
+    "tkl",
+    # Local accessibility
+    "hospital_delay",
+    "fire_delay",
+    "police_delay",
+    "factory_delay", 
+    "port_delay",
+    "border_delay",
+    "railway_delay",
+    # landslide_exposure intentionally excluded — binary indicator
+]
+
+
 
 def add_impact_column(
     base_gdf: gpd.GeoDataFrame,
@@ -77,7 +105,7 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
 
     # Load all critical roads (includes roads with and without hazard exposure)
     gdf_all_critical = gpd.read_parquet(
-        r"C:\Users\yma794\Documents\Serbia\Criticality-Analysis-Roads-Serbia\intermediate_results\criticality_results.parquet"
+        config.Path_criticality_results
     ).to_crs(gdf_hazards.crs)
 
     for col in ['oznaka_deo', 'oznaka_put', 'pocetna_st', 'zavrsna_st']:
@@ -90,13 +118,28 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
     # Keep only the hazard-specific columns from gdf_hazards to avoid conflicts
     hazard_only_cols = [col for col in gdf_hazards.columns 
                         if col not in gdf_all_critical.columns or col == "geometry"]
+    
+    crs = gdf_all_critical.crs  # save before the join
 
-    gdf_hazards = gpd.sjoin(
+    gdf_hazards_joined = gpd.sjoin(
         gdf_all_critical,
-        gdf_hazards[hazard_only_cols],
+        gdf_hazards[hazard_only_cols].assign(_hazard_len=gdf_hazards.geometry.length),
         how="left",
         predicate="intersects",
     ).drop(columns=["index_right"], errors="ignore")
+
+    gdf_hazards = (
+        gdf_hazards_joined
+        .sort_values("_hazard_len", ascending=False)
+        .groupby(level=0)
+        .first()
+        .drop(columns="_hazard_len")
+    )
+
+    # Restore geodataframe with correct geometry and CRS
+    gdf_hazards = gpd.GeoDataFrame(gdf_hazards, geometry="geometry", crs=crs)
+
+    assert len(gdf_hazards) == len(gdf_all_critical)
 
     # Load results of road criticality analysis for emergency services and economic sectors
     hospital_exposed_edges = gpd.read_parquet(config.Path_hospital_impacts).to_crs(
@@ -198,6 +241,9 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
 
     return gdf_hazards
 
+ 
+
+
 
 def calculate_climate_criticaliy_metric(
     gdf_hazards: gpd.GeoDataFrame,
@@ -206,39 +252,50 @@ def calculate_climate_criticaliy_metric(
     Compute a composite climate-criticality metric for each road segment by
     normalizing hazard exposures, travel-disruption impacts, and accessibility
     delays, then combining them into sub-indices and an overall score.
-
+ 
     Parameters
     ----------
     gdf_hazards : gpd.GeoDataFrame
         Road-segment dataset already enriched with hazard metrics, disruption
         metrics, and accessibility delays (hospital/fire/police/ports/borders/rail).
-
+ 
     Returns
     -------
     gpd.GeoDataFrame
         Input GeoDataFrame with standardized (0-1) metrics, three sub-indices
         (hazard exposure, national travel disruption, local accessibility),
         a combined climate-criticality score, and quintile-based classes.
-
+ 
     Behavior
     --------
     Renames key columns, ensures all metrics exist, converts and fills missing
-    values, applies min-max normalization, computes equally-weighted sub-indices,
-    combines them into a climate-criticality index, and classifies all scores
-    into quintiles for mapping and analysis.
+    values, applies log(x+1) transform to heavily skewed travel metrics (phl,
+    thl, pkl, tkl) before min-max normalization, computes equally-weighted
+    sub-indices, combines them into a climate-criticality index, and classifies
+    all scores into quintiles for mapping and analysis.
+ 
+    Log transform rationale
+    -----------------------
+    The four travel disruption metrics (phl, thl, pkl, tkl) showed extreme
+    right-skew (skewness 6–14 in diagnostics). Without transformation, a small
+    number of very high-impact segments set the max and compress all other
+    segments toward zero after min-max normalization, leaving travel disruption
+    effectively inert in the final score. Log(x+1) preserves the zero values
+    (log(0+1) = 0) while pulling the extreme tail in, giving the metric a
+    meaningful spread across all segments.
     """
     # =============================================================================
     # CLIMATE CRITICALITY METRIC
     # =============================================================================
-
+ 
     # Ensure gdf_hazards has a stable index
     gdf_hazards = gdf_hazards.copy()
     gdf_hazards.index.name = "section_id"
-
+ 
     # -----------------------------------------------------------------------------
     # 1. PREPARE DATA - Rename columns to standard names
     # -----------------------------------------------------------------------------
-
+ 
     gdf_hazards = gdf_hazards.rename(
         columns={
             "max_depth": "flood_depth",
@@ -247,61 +304,80 @@ def calculate_climate_criticaliy_metric(
             # Add any other renames as needed
         }
     )
-
-    # Convert landslide_date to binary presence indicator
+ 
     gdf_hazards["landslide_exposure"] = np.where(
-        gdf_hazards["landslide_date"].astype(str).str.len() > 0, 1.0, 0.0
-    )
-
+    gdf_hazards["landslide_date"].notna() & 
+    (gdf_hazards["landslide_date"].astype(str).str.strip() != ""),
+    1.0, 0.0)
+ 
     # -----------------------------------------------------------------------------
     # 2. DEFINE METRIC GROUPS FOR EACH SUB-INDEX
     # -----------------------------------------------------------------------------
-
+ 
     # Hazard Exposure Sub-Index (H) - 5 metrics
     hazard_metrics = [
-        "flood_depth",  # F - Maximum inundation depth (cm)
-        "future_rainfall_change",  # R - Projected % change in extreme rainfall
-        "future_flood_change",  # C - Projected % change in river flood magnitude
-        "landslide_exposure",  # L - Binary landslide exposure
-        "snow_drift",  # S - Length affected by snow drift (km)
+        "flood_depth",              # F - Maximum inundation depth (cm)
+        "future_rainfall_change",   # R - Projected % change in extreme rainfall
+        "future_flood_change",      # C - Projected % change in river flood magnitude
+        "landslide_exposure",       # L - Binary landslide exposure
+        "snow_drift",               # S - Length affected by snow drift (km)
     ]
-
+ 
     # National-Scale Travel Disruption Sub-Index (T) - 4 metrics
     travel_metrics = [
-        "phl",  # Passenger hours lost
-        "thl",  # Tonnage hours lost
-        "pkl",  # Passenger kilometers lost
-        "tkl",  # Tonnage kilometers lost
+        "phl",   # Passenger hours lost
+        "thl",   # Tonnage hours lost
+        "pkl",   # Passenger kilometers lost
+        "tkl",   # Tonnage kilometers lost
     ]
-
+ 
     # Local Accessibility Sub-Index (A) - 6 metrics
     accessibility_metrics = [
-        "hospital_delay",  # HOS - Hospital access delay
-        "fire_delay",  # FIR - Fire station access delay
-        "police_delay",  # POL - Police station access delay
-        "port_delay",  # PRT - Port access delay (agriculture)
-        "border_delay",  # BRD - Border crossing delay (agriculture/industry)
-        "railway_delay",  # RWY - Railway station access delay (agriculture)
+        "hospital_delay",   # HOS - Hospital access delay
+        "fire_delay",       # FIR - Fire station access delay
+        "police_delay",     # POL - Police station access delay
+        "factory_delay",    # Border crossing access delay for industrial areas
+        "port_delay",       # PRT - Port access delay (agriculture)
+        "border_delay",     # BRD - Border crossing delay (agriculture)
+        "railway_delay",    # RWY - Railway station access delay (agriculture)
     ]
-
+ 
     # All metrics combined
     all_metrics = hazard_metrics + travel_metrics + accessibility_metrics
-
+ 
     # -----------------------------------------------------------------------------
     # 3. ENSURE ALL COLUMNS EXIST AND HANDLE MISSING VALUES
     # -----------------------------------------------------------------------------
-
+ 
     for col in all_metrics:
         if col not in gdf_hazards.columns:
             print(f"Warning: Column '{col}' not found. Creating with zeros.")
             gdf_hazards[col] = 0.0
         # Convert to float and fill NaN with 0
         gdf_hazards[col] = gdf_hazards[col].astype(float).fillna(0.0)
-
+ 
     # -----------------------------------------------------------------------------
-    # 4. MIN-MAX NORMALIZATION FUNCTION
+    # 4. LOG TRANSFORM — applied before normalization to heavily skewed metrics
     # -----------------------------------------------------------------------------
-
+ 
+    # Create working columns, applying log(x+1) where specified.
+    # log1p(0) = 0, so zero values are preserved correctly.
+    # Original raw columns are left untouched for auditability.
+ 
+    working_metrics = []
+    for col in all_metrics:
+        if col in LOG_TRANSFORM_METRICS:
+            working_col = f"{col}_log"
+            gdf_hazards[working_col] = np.log1p(gdf_hazards[col])
+            working_metrics.append(working_col)
+            print(f"  log(x+1) applied: {col} → {working_col}")
+        else:
+            working_metrics.append(col)
+ 
+    # -----------------------------------------------------------------------------
+    # 5. MIN-MAX NORMALIZATION FUNCTION
+    # -----------------------------------------------------------------------------
+ 
     def safe_minmax_normalize(series):
         """
         Normalize a series to [0, 1] using min-max normalization.
@@ -310,62 +386,85 @@ def calculate_climate_criticaliy_metric(
         s = series.astype(float).fillna(0.0)
         min_val = s.min()
         max_val = s.max()
-
+ 
         if pd.isna(min_val) or pd.isna(max_val) or max_val == min_val:
             return pd.Series(np.zeros(len(s)), index=s.index)
-
+ 
         return (s - min_val) / (max_val - min_val)
-
+ 
     # -----------------------------------------------------------------------------
-    # 5. NORMALIZE ALL METRICS
+    # 6. NORMALIZE ALL METRICS (using working columns — log-transformed where applicable)
     # -----------------------------------------------------------------------------
+ 
+    # -------------------------------------------------------------------------
+    # DEBUG: Sub-index sums using raw values (before log transform)
+    # -------------------------------------------------------------------------
 
-    print("Normalizing metrics...")
-
-    for col in all_metrics:
-        norm_col = f"{col}_norm"
-        gdf_hazards[norm_col] = safe_minmax_normalize(gdf_hazards[col])
-        print(
-            f"  {col}: min={gdf_hazards[col].min():.2f}, max={gdf_hazards[col].max():.2f}"
+    def _raw_subindex_mean(gdf, metrics):
+        """Compute mean of min-max normalized raw columns across a list of metrics."""
+        normed = pd.concat(
+            [safe_minmax_normalize(gdf[col]) for col in metrics if col in gdf.columns],
+            axis=1
         )
+        return normed.mean(axis=1)
 
-    # -----------------------------------------------------------------------------
-    # 6. COMPUTE SUB-INDICES (Equal weights within each sub-index)
-    # -----------------------------------------------------------------------------
+    print("\nSub-index sums BEFORE log transform:")
+    print("  Hazard exposure:    ", _raw_subindex_mean(gdf_hazards, hazard_metrics).sum())
+    print("  Travel disruption:  ", _raw_subindex_mean(gdf_hazards, travel_metrics).sum())
+    print("  Local accessibility:", _raw_subindex_mean(gdf_hazards, accessibility_metrics).sum())
 
-    # Normalized column names
-    hazard_norm = [f"{col}_norm" for col in hazard_metrics]
-    travel_norm = [f"{col}_norm" for col in travel_metrics]
+    
+    print("Normalizing metrics...")
+ 
+    # Map original metric names to their normalized column names
+    norm_lookup = {}
+    for orig_col, work_col in zip(all_metrics, working_metrics):
+        norm_col = f"{orig_col}_norm"
+        gdf_hazards[norm_col] = safe_minmax_normalize(gdf_hazards[work_col])
+        norm_lookup[orig_col] = norm_col
+        transformed = " (log)" if work_col != orig_col else ""
+        print(
+            f"  {orig_col}{transformed}: "
+            f"min={gdf_hazards[work_col].min():.4f}, "
+            f"max={gdf_hazards[work_col].max():.4f}"
+        )
+ 
+    # -----------------------------------------------------------------------------
+    # 7. COMPUTE SUB-INDICES (equal weights within each sub-index)
+    # -----------------------------------------------------------------------------
+ 
+    hazard_norm        = [f"{col}_norm" for col in hazard_metrics]
+    travel_norm        = [f"{col}_norm" for col in travel_metrics]
     accessibility_norm = [f"{col}_norm" for col in accessibility_metrics]
-
-    # Hazard Exposure Sub-Index: H = (1/5) × (F + R + C + L + S)
-    gdf_hazards["H_hazard_exposure"] = gdf_hazards[hazard_norm].mean(axis=1)
-
-    # National-Scale Travel Disruption Sub-Index: T = (1/4) × (PHL + THL + PKL + TKL)
-    gdf_hazards["T_travel_disruption"] = gdf_hazards[travel_norm].mean(axis=1)
-
-    # Local Accessibility Sub-Index: A = (1/6) × (HOS + FIR + POL + PRT + BRD + RWY)
+ 
+    # H = (1/5) × (F + R + C + L + S)
+    gdf_hazards["H_hazard_exposure"]    = gdf_hazards[hazard_norm].mean(axis=1)
+    print("sum hazard exposure:", gdf_hazards["H_hazard_exposure"].sum())
+ 
+    # T = (1/4) × (PHL + THL + PKL + TKL)
+    gdf_hazards["T_travel_disruption"]  = gdf_hazards[travel_norm].mean(axis=1)
+    print("sum travel disruption", gdf_hazards["T_travel_disruption"].sum())
+ 
+    # A = (1/6) × (HOS + FIR + POL + PRT + BRD + RWY)
     gdf_hazards["A_local_accessibility"] = gdf_hazards[accessibility_norm].mean(axis=1)
+    print("sum local accessibility", gdf_hazards["A_local_accessibility"].sum())
 
     # -----------------------------------------------------------------------------
-    # 7. COMPUTE COMBINED CLIMATE CRITICALITY (Equal weights across sub-indices)
+    # 8. COMPUTE COMBINED CLIMATE CRITICALITY (equal weights across sub-indices)
     # -----------------------------------------------------------------------------
-
-    # CC = (1/3) × (H + T + A)
+ 
+    # CC = (1/3) × (H + T + A)  — using mean(), not sum(), to keep score in [0, 1]
     sub_indices = ["H_hazard_exposure", "T_travel_disruption", "A_local_accessibility"]
-    gdf_hazards["CC_climate_criticality"] = gdf_hazards[sub_indices].sum(axis=1)
-
-    # Classify each sub-index
-    gdf_hazards["H_class"] = classify_quintiles(gdf_hazards["H_hazard_exposure"])
-    gdf_hazards["T_class"] = classify_quintiles(gdf_hazards["T_travel_disruption"])
-    gdf_hazards["A_class"] = classify_quintiles(gdf_hazards["A_local_accessibility"])
-
-    # Classify combined score
+    gdf_hazards["CC_climate_criticality"] = gdf_hazards[sub_indices].mean(axis=1)
+ 
+    # Classify each sub-index and combined score into quintiles
+    gdf_hazards["H_class"]  = classify_quintiles(gdf_hazards["H_hazard_exposure"])
+    gdf_hazards["T_class"]  = classify_quintiles(gdf_hazards["T_travel_disruption"])
+    gdf_hazards["A_class"]  = classify_quintiles(gdf_hazards["A_local_accessibility"])
     gdf_hazards["CC_class"] = classify_quintiles(gdf_hazards["CC_climate_criticality"])
-
+ 
     return gdf_hazards
-
-
+ 
 # -----------------------------------------------------------------------------
 # 8. CLASSIFY INTO QUINTILES (5 categories based on 20% quantiles)
 # -----------------------------------------------------------------------------

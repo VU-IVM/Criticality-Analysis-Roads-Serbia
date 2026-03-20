@@ -279,6 +279,20 @@ def load_network(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     attributes = config.road_attributes + ["geometry"]
     gdf = gdf[attributes]
 
+    # Check and remove exact duplicates (including geometry)
+    total_rows = len(gdf)
+    duplicate_mask = gdf.duplicated(keep=False)
+    unique_duplicated = gdf[duplicate_mask].drop_duplicates().shape[0]
+    total_duplicates = duplicate_mask.sum()
+
+    gdf = gdf.drop_duplicates()
+    gdf = gdf.reset_index(drop=True)
+
+    print(f"  Total rows before deduplication         : {total_rows}")
+    print(f"  Unique rows that have a duplicate       : {unique_duplicated}")
+    print(f"  Total rows involved in duplication      : {total_duplicates}")
+    print(f"  Total rows after deduplication          : {len(gdf)}")
+
     return gdf
 
 
@@ -472,6 +486,13 @@ def load_aadt_data(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     return aadt_network
 
 
+def _nunique_deo(gdf) -> str:
+    try:
+        return f"{gdf['oznaka_deo'].nunique()} unique oznaka_deo"
+    except (KeyError, AttributeError):
+        return "? unique oznaka_deo (column missing)"
+
+
 def merge_aadt_with_network(
     pers_network: gpd.GeoDataFrame,
     aadt_network: gpd.GeoDataFrame,
@@ -490,48 +511,108 @@ def merge_aadt_with_network(
     """
     aadt_cols = config.aadt_original_columns
 
-    if ARCPY_AVAILABLE:
-        arcpy.AddMessage(
-            f"Merging AADT data with network on columns: {aadt_cols + ['oznaka_deo']}"
-        )
-    else:
-        print(
-            f"Merging AADT data with network on columns: {aadt_cols + ['oznaka_deo']}"
-        )
-        print(f"pers_network columns: {list(pers_network.columns)}")
-        print(f"aadt_network columns: {list(aadt_network.columns)}")
+    # ── STEP 0: Inputs ────────────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STEP 0 — Inputs")
+    print("="*60)
+    print(f"  pers_network : {len(pers_network)} rows | {_nunique_deo(pers_network)}")
+    print(f"  aadt_network : {len(aadt_network)} rows | {_nunique_deo(aadt_network)}")
+    n_input = len(pers_network)
 
+    # ── STEP 1: Resolve oznaka_deo ────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STEP 1 — Resolve 'oznaka_deo' column")
+    print("="*60)
     if "oznaka_deo" not in pers_network.columns:
         if "oznaka_deo_left" in pers_network.columns:
-            pers_network = pers_network.rename(
-                columns={"oznaka_deo_left": "oznaka_deo"}
-            )
+            pers_network = pers_network.rename(columns={"oznaka_deo_left": "oznaka_deo"})
+            print("  Renamed 'oznaka_deo_left' → 'oznaka_deo'")
         elif "oznaka_deo_right" in pers_network.columns:
-            pers_network = pers_network.rename(
-                columns={"oznaka_deo_right": "oznaka_deo"}
-            )
+            pers_network = pers_network.rename(columns={"oznaka_deo_right": "oznaka_deo"})
+            print("  Renamed 'oznaka_deo_right' → 'oznaka_deo'")
         else:
             raise KeyError(
-                "Required column 'oznaka_deo' not found in pers_network after topology preparation. "
+                "Required column 'oznaka_deo' not found in pers_network. "
                 f"Available columns: {list(pers_network.columns)}"
             )
+    else:
+        print("  'oznaka_deo' already present — no rename needed")
 
-    # First merge on oznaka_deo
+    #assing crs
+    if pers_network.crs is None:
+        print(f"  ⚠ pers_network has no CRS — assuming same as aadt_network ({aadt_network.crs})")
+        pers_network = pers_network.set_crs(aadt_network.crs)
+    elif pers_network.crs != aadt_network.crs:
+        print(f"  ⚠ CRS mismatch — reprojecting pers_network from {pers_network.crs} to {aadt_network.crs}")
+        pers_network = pers_network.to_crs(aadt_network.crs)
+
+    # ── STEP 2: Attribute join + immediate deduplication ─────────────────────
+    print("\n" + "="*60)
+    print("STEP 2 — Attribute join on 'oznaka_deo' (with deduplication)")
+    print("="*60)
     first_merger = pers_network.merge(
         aadt_network[aadt_cols + ["oznaka_deo"]],
         how="left",
-        left_on="oznaka_deo",
-        right_on="oznaka_deo",
+        on="oznaka_deo",
     )
+    print(f"  Rows after merge (before dedup) : {len(first_merger):>6} | {_nunique_deo(first_merger)}  (input was {n_input})")
 
-    # Spatial join for unmatched rows
-    overlap = first_merger.loc[first_merger.PA.isna()][pers_network.columns].sjoin(
+    # Deduplicate: for each original network row, keep max AADT values
+    agg_dict = {col: "first" for col in pers_network.columns if col in first_merger.columns}
+    agg_dict.update({col: "max" for col in aadt_cols})
+    first_merger = first_merger.groupby(level=0).agg(agg_dict)
+    first_merger = gpd.GeoDataFrame(first_merger, geometry="geometry")
+
+    print(f"  Rows after dedup                : {len(first_merger):>6} | {_nunique_deo(first_merger)}")
+    if len(first_merger) != n_input:
+        print(f"  ⚠ Still {len(first_merger) - n_input:+d} rows vs input — investigate!")
+
+    attr_matched_mask   = first_merger["PA"].notna()
+    attr_unmatched_mask = first_merger["PA"].isna()
+    n_attr_matched      = attr_matched_mask.sum()
+    n_attr_unmatched    = attr_unmatched_mask.sum()
+    print(f"  ✓ Matched (PA not NaN): {n_attr_matched:>6} ({100*n_attr_matched/len(first_merger):.1f}%) | {_nunique_deo(first_merger.loc[attr_matched_mask])}")
+    print(f"  ✗ Unmatched (PA NaN)  : {n_attr_unmatched:>6} ({100*n_attr_unmatched/len(first_merger):.1f}%) | {_nunique_deo(first_merger.loc[attr_unmatched_mask])}")
+
+    if n_attr_unmatched > 0:
+        try:
+            unmatched_keys = first_merger.loc[attr_unmatched_mask, "oznaka_deo"].unique()
+            print(f"  Sample unmatched oznaka_deo values: {unmatched_keys[:5].tolist()}")
+        except KeyError:
+            print("  Sample unmatched oznaka_deo values: (column missing)")
+
+    # ── STEP 3: Spatial join for unmatched rows ───────────────────────────────
+    print("\n" + "="*60)
+    print("STEP 3 — Spatial join (intersects) on unmatched rows")
+    print("="*60)
+    unmatched_gdf = first_merger.loc[attr_unmatched_mask][pers_network.columns]
+    overlap = unmatched_gdf.sjoin(
         aadt_network[aadt_cols + ["oznaka_deo", "geometry"]],
         how="left",
         predicate="intersects",
     )
 
-    # Get the AADT geometries for the matched index_right values
+    overlap = unmatched_gdf.sjoin(
+        aadt_network[aadt_cols + ["oznaka_deo", "geometry"]],
+        how="left",
+        predicate="intersects",
+    )
+    # Restore oznaka_deo from the left side after sjoin suffix collision
+    if "oznaka_deo_left" in overlap.columns:
+        overlap = overlap.rename(columns={"oznaka_deo_left": "oznaka_deo"})
+
+    n_into_sjoin   = len(unmatched_gdf)
+    n_spatial_any  = overlap["index_right"].notna().sum()
+    n_spatial_none = overlap["index_right"].isna().sum()
+    print(f"  Rows into sjoin          : {n_into_sjoin:>6} | {_nunique_deo(unmatched_gdf)}")
+    print(f"  Rows out of sjoin        : {len(overlap):>6} | {_nunique_deo(overlap)}  (can be > input due to 1-to-many matches)")
+    print(f"  ✓ Got a spatial match    : {n_spatial_any:>6} ({100*n_spatial_any/n_into_sjoin:.1f}%) | {_nunique_deo(overlap.loc[overlap['index_right'].notna()])}")
+    print(f"  ✗ No spatial match at all: {n_spatial_none:>6} ({100*n_spatial_none/n_into_sjoin:.1f}%) | {_nunique_deo(overlap.loc[overlap['index_right'].isna()])}")
+
+    # ── STEP 4: Overlap ratio filter ─────────────────────────────────────────
+    print("\n" + "="*60)
+    print(f"STEP 4 — Overlap ratio filter (threshold = {config.overlap_threshold})")
+    print("="*60)
     overlap_with_aadt_geom = overlap.dropna(subset=["index_right"]).copy()
     overlap_with_aadt_geom["aadt_geometry"] = aadt_network.loc[
         overlap_with_aadt_geom["index_right"].astype(int), "geometry"
@@ -546,75 +627,103 @@ def merge_aadt_with_network(
         / overlap_with_aadt_geom["geometry"].length
     )
 
-    # Keep only rows with >= threshold overlap
-    overlap_filtered = overlap_with_aadt_geom[
-        overlap_with_aadt_geom["overlap_ratio"] >= config.overlap_threshold
-    ].copy()
+    below_threshold_mask = overlap_with_aadt_geom["overlap_ratio"] < config.overlap_threshold
+    above_threshold_mask = overlap_with_aadt_geom["overlap_ratio"] >= config.overlap_threshold
+    n_evaluated = len(overlap_with_aadt_geom)
+    n_below = below_threshold_mask.sum()
+    n_above = above_threshold_mask.sum()
+    print(f"  Rows evaluated             : {n_evaluated:>6} | {_nunique_deo(overlap_with_aadt_geom)}")
+    print(f"  ✓ Above threshold          : {n_above:>6} ({100*n_above/n_evaluated:.1f}%) | {_nunique_deo(overlap_with_aadt_geom.loc[above_threshold_mask])}")
+    print(f"  ✗ Below threshold (dropped): {n_below:>6} ({100*n_below/n_evaluated:.1f}%) | {_nunique_deo(overlap_with_aadt_geom.loc[below_threshold_mask])}")
+
+    # Print overlap ratio distribution to help tune the threshold
+    bins   = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.01]
+    labels = ["0-10%", "10-25%", "25-50%", "50-75%", "75-90%", "90-100%"]
+    ratios = overlap_with_aadt_geom["overlap_ratio"]
+    print("\n  Overlap ratio distribution:")
+    for lo, hi, label in zip(bins, bins[1:], labels):
+        count = ((ratios >= lo) & (ratios < hi)).sum()
+        bar = "█" * int(30 * count / max(n_evaluated, 1))
+        print(f"    {label:>8}  {bar:<30} {count:>5} ({100*count/n_evaluated:.1f}%)")
+
+    overlap_filtered = overlap_with_aadt_geom[above_threshold_mask].copy()
     overlap_filtered = overlap_filtered.drop(
         columns=["aadt_geometry", "intersection_geom", "overlap_ratio"]
     )
 
-    # Aggregate overlapping matches
+    # ── STEP 5: Aggregate spatial matches ────────────────────────────────────
+    print("\n" + "="*60)
+    print("STEP 5 — Aggregate overlapping spatial matches")
+    print("="*60)
     first_cols = [
-        "oznaka_deo_left",
-        "smer_gdf1",
-        "kategorija",
-        "oznaka_put",
-        "oznaka_poc",
-        "naziv_poce",
-        "oznaka_zav",
-        "naziv_zavr",
-        "duzina_deo",
-        "pocetna_st",
-        "geometry",
-        "index_right",
-        "oznaka_deo_right",
+        "oznaka_deo", "smer_gdf1", "kategorija", "oznaka_put",
+        "oznaka_poc", "naziv_poce", "oznaka_zav", "naziv_zavr",
+        "duzina_deo", "pocetna_st", "geometry",
     ]
+    agg_dict = {col: "first" for col in first_cols if col in overlap_filtered.columns}
+    agg_dict.update({col: "max" for col in aadt_cols})
 
-    agg_dict = {col: "first" for col in first_cols}
-    agg_dict.update({col: "max" for col in config.aadt_original_columns})
+    n_before_dropna   = len(overlap_filtered)
+    overlap_for_agg   = overlap_filtered.dropna(subset=aadt_cols)
+    n_dropped_no_aadt = n_before_dropna - len(overlap_for_agg)
+    print(f"  Rows before dropna(aadt_cols)    : {n_before_dropna:>6} | {_nunique_deo(overlap_filtered)}")
+    print(f"  ✗ Dropped (all AADT cols NaN)    : {n_dropped_no_aadt:>6} ({100*n_dropped_no_aadt/max(n_before_dropna,1):.1f}%) | {_nunique_deo(overlap_filtered.loc[~overlap_filtered.index.isin(overlap_for_agg.index)])}")
 
-    result = (
-        overlap_filtered.dropna(subset=config.aadt_original_columns)
-        .groupby(level=0)
-        .agg(agg_dict)
-    )
+    result = overlap_for_agg.groupby(level=0).agg(agg_dict)
+    print(f"  Rows after groupby (deduplicated): {len(result):>6} | {_nunique_deo(result)}")
 
-    # Concatenate results
-    AADT_connected = pd.concat(
-        [first_merger.loc[first_merger.dropna(subset=aadt_cols).index], result]
-    )
-    AADT_connected = gpd.GeoDataFrame(
-        pd.concat(
-            [
-                AADT_connected,
-                pers_network.loc[~pers_network.index.isin(AADT_connected.index)],
-            ]
-        )
-    )
+    # ── STEP 6: Concatenate ───────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STEP 6 — Concatenate attribute matches + spatial matches + leftovers")
+    print("="*60)
+    attr_matched_rows = first_merger.loc[first_merger.dropna(subset=aadt_cols).index]
+    print(f"  Attribute-matched rows   : {len(attr_matched_rows):>6} ({100*len(attr_matched_rows)/n_input:.1f}%) | {_nunique_deo(attr_matched_rows)}")
+    print(f"  Spatial-matched rows     : {len(result):>6} ({100*len(result)/n_input:.1f}%) | {_nunique_deo(result)}")
 
-    # Rename columns to standard names
+    AADT_connected = pd.concat([attr_matched_rows, result])
+    n_dupes = AADT_connected.index.duplicated().sum()
+    if n_dupes:
+        print(f"  ⚠ Duplicate indices after first concat: {n_dupes}")
+
+    leftovers = pers_network.loc[~pers_network.index.isin(AADT_connected.index)]
+    print(f"  Leftover (no AADT at all): {len(leftovers):>6} ({100*len(leftovers)/n_input:.1f}%) | {_nunique_deo(leftovers)}")
+
+    AADT_connected = gpd.GeoDataFrame(pd.concat([AADT_connected, leftovers]), geometry="geometry")
+    print(f"  Total rows after concat  : {len(AADT_connected):>6} | {_nunique_deo(AADT_connected)}")
+
+    # ── STEP 7: Rename + cast ─────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STEP 7 — Rename columns and cast to float64")
+    print("="*60)
     column_mapping = {
-        "PA": "passenger_cars",
-        "BUS": "buses",
-        "LT": "light_trucks",
-        "ST": "medium_trucks",
-        "TT": "heavy_trucks",
-        "AV": "articulated_vehicles",
-        "Ukupno": "total_aadt",
+        "PA": "passenger_cars", "BUS": "buses", "LT": "light_trucks",
+        "ST": "medium_trucks", "TT": "heavy_trucks",
+        "AV": "articulated_vehicles", "Ukupno": "total_aadt",
     }
     AADT_connected = AADT_connected.rename(columns=column_mapping)
-
-    # Convert to float64 after renaming (matching notebook procedure)
-    AADT_connected[config.traffic_types] = AADT_connected[config.traffic_types].astype(
-        np.float64
-    )
-
-    # Ensure it's a GeoDataFrame with proper CRS
+    AADT_connected[config.traffic_types] = AADT_connected[config.traffic_types].astype(np.float64)
     AADT_connected = gpd.GeoDataFrame(AADT_connected, geometry="geometry")
 
-    return AADT_connected
+    # ── STEP 8: Final summary ─────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STEP 8 — Final summary")
+    print("="*60)
+    print(f"  Input rows  : {n_input:>6} | {_nunique_deo(pers_network)}")
+    print(f"  Output rows : {len(AADT_connected):>6} | {_nunique_deo(AADT_connected)}")
+    row_diff = len(AADT_connected) - n_input
+    print(f"  Row delta   : {row_diff:>+6}  {'✓ preserved' if row_diff == 0 else '⚠ mismatch'}")
+    n_final_dupes = AADT_connected.index.duplicated().sum()
+    if n_final_dupes:
+        print(f"  ⚠ Duplicate indices in output: {n_final_dupes}")
+    print()
+    for col in config.traffic_types:
+        n_filled = AADT_connected[col].notna().sum()
+        pct = 100 * n_filled / len(AADT_connected)
+        bar = "█" * int(20 * n_filled / len(AADT_connected))
+        print(f"  {col:<22}: {bar:<20} {n_filled:>6} ({pct:.1f}%)")
+    print("="*60 + "\n")
 
+    return AADT_connected
 
 def find_touching_roads_with_aadt(
     idx: int, gdf: gpd.GeoDataFrame, buffer_dist: float = 1.0
