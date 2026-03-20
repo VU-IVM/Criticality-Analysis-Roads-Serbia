@@ -1,36 +1,15 @@
-import os,sys
-import pickle
 import xarray as xr
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import shapely
-from shapely import wkt
-from shapely.geometry import Point
-#import cftime
-from pathlib import Path
-from tqdm import tqdm
-import contextily as ctx
+
+# import cftime
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm  # For colormap
-from matplotlib.lines import Line2D  # For custom legend
-from matplotlib.colors import Normalize, BoundaryNorm
-from matplotlib.ticker import FuncFormatter, MultipleLocator,LinearLocator
-import osm_flex.extract as ex
-import igraph as ig
-import networkx as nx
-from rasterio.enums import Resampling
-from exactextract import exact_extract
+from matplotlib.colors import BoundaryNorm
 import matplotlib.patches as mpatches
 
-import matplotlib.pyplot as plt
 import contextily as cx
-import pandas as pd
-import numpy as np
 from matplotlib.colors import ListedColormap
-from matplotlib.patches import Patch
-from rasterstats import zonal_stats
-import matplotlib.colors as mcolors
 from rasterio.features import geometry_mask
 from shapely.geometry import mapping
 from affine import Affine
@@ -44,17 +23,18 @@ scenarios = ["15", "20", "30", "40"]
 scenario_labels = {"15": "1.5", "20": "2.0", "30": "3.0", "40": "4.0"}  # for titles
 bins = [10, 25, 50, 100, 150, np.inf]
 labels = ["10-25", "25-50", "50-100", "100-150", "150+"]
-colors = ["#b2182b", "#ef8a62", "#fddbc7","#d1e5f0", "#67a9cf"]
+colors = ["#b2182b", "#ef8a62", "#fddbc7", "#d1e5f0", "#67a9cf"]
 color_dict = dict(zip(labels, colors))
 color_dict["No data"] = "white"
-
 
 
 def load_data(config):
     basins = pd.read_csv(config.Path_flood_statistics_per_basin)
 
     all_basins = gpd.read_file(config.basins_shapefile)
-    basins = gpd.GeoDataFrame(basins.merge(all_basins,left_on='basinID',right_on='HYBAS_ID'))
+    basins = gpd.GeoDataFrame(
+        basins.merge(all_basins, left_on="basinID", right_on="HYBAS_ID")
+    )
 
     # --- Open NetCDF dataset ---
     ds = xr.open_dataset(config.Path_flooding_climate_change)
@@ -90,7 +70,6 @@ def calculate_future_intensities_and_return_periods(ds, basins_3035, roads, conf
         rp = rp.rio.set_spatial_dims(x_dim="x", y_dim="y", inplace=False)
         rl_dict[f"rp_shift_{scenario}"] = rp
 
-
     for scenario in scenarios:
         da = ds[f"return_level_perc_chng_{scenario}"]
         sig = ds[f"significant_{scenario}"]
@@ -107,14 +86,10 @@ def calculate_future_intensities_and_return_periods(ds, basins_3035, roads, conf
 
         rl_dict[scenario] = da
 
-
-
     # Loop over scenarios and calculate basin means
     for scenario in scenarios:
-
         # Select the DataArray for this scenario
         da = rl_dict[f"rp_shift_{scenario}"]
-
 
         # Clip and calculate mean per basin
         mean_vals = []
@@ -135,25 +110,21 @@ def calculate_future_intensities_and_return_periods(ds, basins_3035, roads, conf
 
         # Categorize into bins
         basins_3035[f"rp{scenario}_bin"] = pd.cut(
-            basins_3035[col_mean],
-            bins=bins,
-            labels=labels,
-            include_lowest=True
+            basins_3035[col_mean], bins=bins, labels=labels, include_lowest=True
         )
 
         print(f"Scenario of {scenario_labels[scenario]}°C warming:")
         print(f"min new RP={min_val:.2f}, max new RP={max_val:.2f}")
 
-
     # Drop leftover spatial join columns if they exist
     roads = roads.drop(
         columns=[c for c in ["index_right", "index_left"] if c in roads.columns],
-        errors="ignore"
+        errors="ignore",
     )
 
     basins_3035 = basins_3035.drop(
         columns=[c for c in ["index_right", "index_left"] if c in basins_3035.columns],
-        errors="ignore"
+        errors="ignore",
     )
 
     # Start from roads
@@ -164,7 +135,7 @@ def calculate_future_intensities_and_return_periods(ds, basins_3035, roads, conf
         roads_rp,
         basins_3035[["geometry"] + [f"rp{s}_mean" for s in scenarios]],
         how="left",
-        predicate="intersects"
+        predicate="intersects",
     )
 
     # Now create bins for each scenario
@@ -173,14 +144,14 @@ def calculate_future_intensities_and_return_periods(ds, basins_3035, roads, conf
             roads_rp[f"rp{scenario}_mean"],
             bins=bins,
             labels=labels,
-            include_lowest=True
+            include_lowest=True,
         )
 
         # Count basins per bin
         bin_counts = basins_3035[f"rp{scenario}_bin"].value_counts().sort_index()
         no_data_count = basins_3035[f"rp{scenario}_bin"].isna().sum()
 
-        if config.print_statistics == True:
+        if config.print_statistics:
             print(f"\nScenario of {scenario_labels[scenario]}°C warming:")
             print("Number of basins in each return period category:")
             print(bin_counts)
@@ -189,16 +160,13 @@ def calculate_future_intensities_and_return_periods(ds, basins_3035, roads, conf
             print("Number of raods in each return period category")
             print(roads_rp[f"rp{scenario}_bin"].value_counts(dropna=False))
 
-    
     return basins_3035, roads_rp
-
 
 
 def plot_basins(basins_3035, config):
     #############################################
     # Plot basins
     #############################################
-
 
     # Reproject basins to Web Mercator for basemap
     basins_3857 = basins_3035.to_crs(epsg=3857)
@@ -212,23 +180,26 @@ def plot_basins(basins_3035, config):
 
         # Categorize into bins
         basins_3857[f"rp{scenario}_bin"] = pd.cut(
-            basins_3857[col_mean],
-            bins=bins,
-            labels=labels,
-            include_lowest=True
+            basins_3857[col_mean], bins=bins, labels=labels, include_lowest=True
         )
 
         # Create plot color column, assign white to NaN
-        basins_3857[f"plot_color_{scenario}"] = basins_3857[f"rp{scenario}_bin"].astype(str)
-        basins_3857.loc[basins_3857[f"plot_color_{scenario}"] == "nan", f"plot_color_{scenario}"] = "No data"
-        basins_3857[f"plot_color_{scenario}"] = basins_3857[f"plot_color_{scenario}"].map(color_dict)
+        basins_3857[f"plot_color_{scenario}"] = basins_3857[f"rp{scenario}_bin"].astype(
+            str
+        )
+        basins_3857.loc[
+            basins_3857[f"plot_color_{scenario}"] == "nan", f"plot_color_{scenario}"
+        ] = "No data"
+        basins_3857[f"plot_color_{scenario}"] = basins_3857[
+            f"plot_color_{scenario}"
+        ].map(color_dict)
 
         # Plot basins
         basins_3857.plot(
             color=basins_3857[f"plot_color_{scenario}"],
             edgecolor="black",
             linewidth=0.5,
-            ax=axes[i]
+            ax=axes[i],
         )
 
         # Add basemap
@@ -236,54 +207,65 @@ def plot_basins(basins_3035, config):
             ax=axes[i],
             source=cx.providers.CartoDB.Positron,
             alpha=1.0,
-            attribution=False
+            attribution=False,
         )
 
-        axes[i].set_title(f"Future warming scenario: {scenario_labels[scenario]}°C", fontsize=14)
+        axes[i].set_title(
+            f"Future warming scenario: {scenario_labels[scenario]}°C", fontsize=14
+        )
         axes[i].set_axis_off()
 
     # Create shared legend
-    handles = [mpatches.Patch(facecolor=color_dict[label], edgecolor="black", label=label) for label in labels + ["No data"]]
+    handles = [
+        mpatches.Patch(facecolor=color_dict[label], edgecolor="black", label=label)
+        for label in labels + ["No data"]
+    ]
     fig.legend(
         handles=handles,
         title="Future return periods of floods with a current 100 year return period",
         loc="lower center",
         ncol=len(handles),
-        frameon=True,                # box around legend
+        frameon=True,  # box around legend
         edgecolor="black",
-        facecolor="white"
+        facecolor="white",
     )
-
-
 
     letters = string.ascii_uppercase
     N = 4  # number of plots used
 
     # Flatten axes in any order
-    axes_flat = axes.flatten()  
+    axes_flat = axes.flatten()
 
     # Sort axes **top-to-bottom, left-to-right**
     axes_sorted = sorted(
         axes_flat[:N],
-        key=lambda ax: (-ax.get_position().y0, ax.get_position().x0)  # negative y0 for top-to-bottom
+        key=lambda ax: (
+            -ax.get_position().y0,
+            ax.get_position().x0,
+        ),  # negative y0 for top-to-bottom
     )
 
     # Add letter labels
     for i, ax in enumerate(axes_sorted):
         ax.text(
-            0.05, 0.95, letters[i],
+            0.05,
+            0.95,
+            letters[i],
             transform=ax.transAxes,
             fontsize=16,
-            fontweight='bold',
-            verticalalignment='top',
-            bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8)
+            fontweight="bold",
+            verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
         )
 
-
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
-    plt.savefig(config.figure_path / "Change in return period.png", dpi=300, bbox_inches="tight")
+    plt.savefig(
+        config.figure_path / "Change in return period.png", dpi=300, bbox_inches="tight"
+    )
     basins_3857.to_parquet(config.Path_future_floods_change_RP)
-    basins_3857.to_file(config.Path_future_floods_change_RP.with_suffix('.gpkg'), driver='GPKG')
+    basins_3857.to_file(
+        config.Path_future_floods_change_RP.with_suffix(".gpkg"), driver="GPKG"
+    )
     if config.show_figures:
         plt.show()
 
@@ -300,26 +282,25 @@ def plot_effect_on_roads(roads, roads_rp, config):
     axes = axes.flatten()
 
     for i, scenario in enumerate(scenarios):
-        col_mean = f"rp{scenario}_mean"
 
         # Create plot color column, assign white to NaN
         roads_rp[f"plot_color_{scenario}"] = roads_rp[f"rp{scenario}_bin"].astype(str)
-        roads_rp.loc[roads_rp[f"plot_color_{scenario}"] == "nan", f"plot_color_{scenario}"] = "No data"
-        roads_rp[f"plot_color_{scenario}"] = roads_rp[f"plot_color_{scenario}"].map(color_dict)
+        roads_rp.loc[
+            roads_rp[f"plot_color_{scenario}"] == "nan", f"plot_color_{scenario}"
+        ] = "No data"
+        roads_rp[f"plot_color_{scenario}"] = roads_rp[f"plot_color_{scenario}"].map(
+            color_dict
+        )
 
-        #plot roads in the background in grey 
-        roads.plot(
-                ax=axes[i],
-                color="grey",
-                linewidth=0.8
-            )
+        # plot roads in the background in grey
+        roads.plot(ax=axes[i], color="grey", linewidth=0.8)
 
         # Plot roads that experience change
         roads_rp.plot(
             color=roads_rp[f"plot_color_{scenario}"],
             edgecolor="black",
             linewidth=1.2,
-            ax=axes[i]
+            ax=axes[i],
         )
 
         # Add basemap
@@ -327,21 +308,19 @@ def plot_effect_on_roads(roads, roads_rp, config):
             ax=axes[i],
             source=cx.providers.CartoDB.Positron,
             alpha=1.0,
-            attribution=False
+            attribution=False,
         )
 
-        axes[i].set_title(f"Future warming scenario: {scenario_labels[scenario]}°C", fontsize=14)
+        axes[i].set_title(
+            f"Future warming scenario: {scenario_labels[scenario]}°C", fontsize=14
+        )
         axes[i].set_axis_off()
 
     # Create shared legend
     legend_labels = ["10-25", "25-50", "50-100", "100-150", "150+"]
 
     handles = [
-        mpatches.Patch(
-            facecolor=color_dict[label],
-            edgecolor="black",
-            label=label
-        )
+        mpatches.Patch(facecolor=color_dict[label], edgecolor="black", label=label)
         for label in legend_labels
     ]
 
@@ -350,41 +329,50 @@ def plot_effect_on_roads(roads, roads_rp, config):
         title="Future return periods of floods with a current 100 year return period",
         loc="lower center",
         ncol=len(handles),
-        frameon=True,                # box around legend
+        frameon=True,  # box around legend
         edgecolor="black",
-        facecolor="white"
+        facecolor="white",
     )
-
 
     letters = string.ascii_uppercase
     N = 4  # number of plots used
 
     # Flatten axes in any order
-    axes_flat = axes.flatten()  
+    axes_flat = axes.flatten()
 
     # Sort axes **top-to-bottom, left-to-right**
     axes_sorted = sorted(
         axes_flat[:N],
-        key=lambda ax: (-ax.get_position().y0, ax.get_position().x0)  # negative y0 for top-to-bottom
+        key=lambda ax: (
+            -ax.get_position().y0,
+            ax.get_position().x0,
+        ),  # negative y0 for top-to-bottom
     )
 
     # Add letter labels
     for i, ax in enumerate(axes_sorted):
         ax.text(
-            0.05, 0.95, letters[i],
+            0.05,
+            0.95,
+            letters[i],
             transform=ax.transAxes,
             fontsize=16,
-            fontweight='bold',
-            verticalalignment='top',
-            bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8)
+            fontweight="bold",
+            verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
         )
 
-
     plt.tight_layout(rect=[0, 0.03, 1, 1])  # leave space at bottom for legend
-    plt.savefig(config.figure_path / "Change in return period experienced by roads.png", dpi=300, bbox_inches="tight")
-    #save to .parquet and .gpkg
+    plt.savefig(
+        config.figure_path / "Change in return period experienced by roads.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    # save to .parquet and .gpkg
     roads_rp.to_parquet(config.Path_future_flooding_roads)
-    roads_rp.to_file(config.Path_future_flooding_roads.with_suffix('.gpkg'), driver='GPKG')
+    roads_rp.to_file(
+        config.Path_future_flooding_roads.with_suffix(".gpkg"), driver="GPKG"
+    )
     if config.show_figures:
         plt.show()
 
@@ -394,10 +382,7 @@ def max_raster_along_line(line, raster, transform):
     Returns the maximum raster value intersecting a line geometry.
     """
     mask = geometry_mask(
-        [mapping(line)],
-        transform=transform,
-        invert=True,
-        out_shape=raster.shape
+        [mapping(line)], transform=transform, invert=True, out_shape=raster.shape
     )
 
     values = raster[mask]
@@ -408,43 +393,34 @@ def max_raster_along_line(line, raster, transform):
     return np.nanmax(values)
 
 
-
 def calculate_future_max_precipitation(config, roads, variables):
-        
+
     results = {}
 
     for rcp in ("45", "85"):
         results[rcp] = {}
         for period in ("1", "2"):
-
             file_name = "rcp" + rcp + "_rx1d_change" + period + ".nc"
             file = config.climate_change_precipitation_folder / file_name
-           
-            ds = xr.open_dataset(
-                file
-            )
+
+            ds = xr.open_dataset(file)
 
             file_name = "rcp" + rcp + "_rx1d_change" + period + "_ensmed.nc"
             file_name_ensamble = config.climate_change_precipitation_folder / file_name
-            ensamble_median = xr.open_dataset(
-                file_name_ensamble
-            )
-
+            ensamble_median = xr.open_dataset(file_name_ensamble)
 
             if roads.crs != "EPSG:4326":
                 roads = roads.to_crs("EPSG:4326")
 
-
-
             if rcp == "45":
-                rcp_text = "4.5"
+                pass
             elif rcp == "85":
-                rcp_text = "8.5"
+                pass
 
             if period == "1":
-                period_text = "2031-2060"
+                pass
             elif rcp == "2":
-                period_text = "2071-2100"
+                pass
 
             # -----------------------------
             # Load Serbia boundary
@@ -460,24 +436,26 @@ def calculate_future_max_precipitation(config, roads, variables):
             ds = ds.rio.set_spatial_dims(x_dim="longitude", y_dim="latitude")
 
             ensamble_median = ensamble_median.rio.write_crs("EPSG:4326")
-            ensamble_median = ensamble_median.rio.set_spatial_dims(x_dim="longitude", y_dim="latitude")
+            ensamble_median = ensamble_median.rio.set_spatial_dims(
+                x_dim="longitude", y_dim="latitude"
+            )
 
-            #make variable names consistent with baseline data
-            ensamble_median = ensamble_median.rename({
-                "Change_ensmed_T20":   "Change_T20",
-                "Change_ensmed_T50":   "Change_T50",
-                "Change_ensmed_T100":  "Change_T100",
-                "Change_ensmed_T500":  "Change_T500",
-                "Change_ensmed_T1000": "Change_T1000",
-            })
-
+            # make variable names consistent with baseline data
+            ensamble_median = ensamble_median.rename(
+                {
+                    "Change_ensmed_T20": "Change_T20",
+                    "Change_ensmed_T50": "Change_T50",
+                    "Change_ensmed_T100": "Change_T100",
+                    "Change_ensmed_T500": "Change_T500",
+                    "Change_ensmed_T1000": "Change_T1000",
+                }
+            )
 
             # -----------------------------
             # Calculate how many of the 8 climate models agree on the direction of change for future Rx1d
             # -----------------------------
 
             for var in variables:
-
                 data = ds[var]
                 ensemble = ensamble_median[var]
 
@@ -495,10 +473,10 @@ def calculate_future_max_precipitation(config, roads, variables):
                 agreement = xr.where(n_neg == 5, -1, agreement)
 
                 # Positive agreement
-                agreement = xr.where(n_pos == 5,  1, agreement)
-                agreement = xr.where(n_pos == 6,  2, agreement)
-                agreement = xr.where(n_pos == 7,  3, agreement)
-                agreement = xr.where(n_pos == 8,  4, agreement)
+                agreement = xr.where(n_pos == 5, 1, agreement)
+                agreement = xr.where(n_pos == 6, 2, agreement)
+                agreement = xr.where(n_pos == 7, 3, agreement)
+                agreement = xr.where(n_pos == 8, 4, agreement)
 
                 # -----------------------------
                 # Build affine transform
@@ -506,9 +484,8 @@ def calculate_future_max_precipitation(config, roads, variables):
                 lon = agreement.longitude.values
                 lat = agreement.latitude.values
 
-                transform = (
-                    Affine.translation(lon[0], lat[0])
-                    * Affine.scale(lon[1] - lon[0], lat[1] - lat[0])
+                transform = Affine.translation(lon[0], lat[0]) * Affine.scale(
+                    lon[1] - lon[0], lat[1] - lat[0]
                 )
 
                 # -----------------------------
@@ -536,21 +513,19 @@ def calculate_future_max_precipitation(config, roads, variables):
                 # -----------------------------
                 total_cells = agreement_clip.count().item()
                 good_cells = agreement_clip.where(agreement_clip != 0).count().item()
-                percent_good = good_cells / total_cells * 100
+                good_cells / total_cells * 100
 
-                #------------------------------
+                # ------------------------------
                 #  Remove projection cells where 4 models project increase and 4 project decrease
-                #------------------------------
+                # ------------------------------
                 ensemble_masked = ensemble.where(agreement != 0)
 
                 lon = ensemble.longitude.values
                 lat = ensemble.latitude.values
 
-                transform = (
-                    Affine.translation(lon[0], lat[0])
-                    * Affine.scale(lon[1] - lon[0], lat[1] - lat[0])
+                transform = Affine.translation(lon[0], lat[0]) * Affine.scale(
+                    lon[1] - lon[0], lat[1] - lat[0]
                 )
-                
 
                 mask = features.rasterize(
                     [(geom, 1) for geom in serbia.geometry],
@@ -568,8 +543,8 @@ def calculate_future_max_precipitation(config, roads, variables):
 
                 ensemble_masked = ensemble_masked.where(mask == 1)
 
-                #convert to percent
-                ensemble_masked_pct  = ensemble_masked * 100
+                # convert to percent
+                ensemble_masked_pct = ensemble_masked * 100
 
                 # Use percent-scaled, agreement-masked data
                 raster = ensemble_masked_pct
@@ -590,14 +565,9 @@ def calculate_future_max_precipitation(config, roads, variables):
                 #################################
 
                 roads["max_rx1day_pct"] = roads.geometry.apply(
-                    lambda geom: max_raster_along_line(
-                        geom,
-                        raster_values,
-                        transform
-                    )
+                    lambda geom: max_raster_along_line(geom, raster_values, transform)
                 )
 
-                
                 roads_with_agreement = roads[roads["max_rx1day_pct"].notna()]
                 roads_no_agreement = roads[roads["max_rx1day_pct"].isna()]
 
@@ -606,96 +576,97 @@ def calculate_future_max_precipitation(config, roads, variables):
                     "no_agreement": roads_no_agreement,
                 }
 
-                #save result per rcp and time period 
-                file_name = "change in maximum daily precipitation rcp " + rcp + " period " + period + ".parquet"
+                # save result per rcp and time period
+                file_name = (
+                    "change in maximum daily precipitation rcp "
+                    + rcp
+                    + " period "
+                    + period
+                    + ".parquet"
+                )
                 file_path = config.intermediate_results_path / file_name
                 roads_with_agreement.to_parquet(file_path)
-                roads_with_agreement.to_file(file_path.with_suffix('.gpkg'), driver='GPKG')
-
+                roads_with_agreement.to_file(
+                    file_path.with_suffix(".gpkg"), driver="GPKG"
+                )
 
     return results
 
 
 def plot_precipitation_climate_change(results, config):
-    
+
     rcps = ["45", "85"]
-    periods = ["1", "2"] 
+    periods = ["1", "2"]
 
     fig, axes = plt.subplots(
-        nrows=2, ncols=2,
-        figsize=(6.5, 9.2),
-        sharex=True, sharey=True    
+        nrows=2, ncols=2, figsize=(6.5, 9.2), sharex=True, sharey=True
     )
 
     fig.subplots_adjust(
-        left=0.06,    # left margin
-        right=0.98,   # right margin
-        top=0.98,     # top margin
+        left=0.06,  # left margin
+        right=0.98,  # right margin
+        top=0.98,  # top margin
         bottom=0.10,  # leave room for colorbar
         wspace=0.02,  # horizontal space between subplots
-        hspace=0.02   # vertical space between subplots
+        hspace=0.02,  # vertical space between subplots
     )
 
     labels = string.ascii_uppercase
     N = 4  # number of plots used
 
     # Flatten axes in any order
-    axes_flat = axes.flatten()  
+    axes_flat = axes.flatten()
 
     # Sort axes **top-to-bottom, left-to-right**
     axes_sorted = sorted(
         axes_flat[:N],
-        key=lambda ax: (-ax.get_position().y0, ax.get_position().x0)  # negative y0 for top-to-bottom
+        key=lambda ax: (
+            -ax.get_position().y0,
+            ax.get_position().x0,
+        ),  # negative y0 for top-to-bottom
     )
 
     # Add labels
     for i, ax in enumerate(axes_sorted):
         ax.text(
-            0.05, 0.95, labels[i],
+            0.05,
+            0.95,
+            labels[i],
             transform=ax.transAxes,
             fontsize=14,
-            fontweight='bold',
-            verticalalignment='top',
-            bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8)
+            fontweight="bold",
+            verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
         )
-
-        
 
     for row, period in enumerate(periods):
         for col, rcp in enumerate(rcps):
+            # reproject to match contextily
+            results[rcp][period]["roads_with_agreement"] = results[rcp][period][
+                "roads_with_agreement"
+            ].to_crs(epsg=3857)
 
-            #reproject to match contextily
-            results[rcp][period]["roads_with_agreement"] = (
-                results[rcp][period]["roads_with_agreement"]
-                .to_crs(epsg=3857)
-            )
-
-            results[rcp][period]["no_agreement"] = (
-                results[rcp][period]["no_agreement"]
-                .to_crs(epsg=3857)
-            )
+            results[rcp][period]["no_agreement"] = results[rcp][period][
+                "no_agreement"
+            ].to_crs(epsg=3857)
 
             ax = axes[row, col]
 
             # plot roads without agreement (grey, underneath)
             results[rcp][period]["no_agreement"].plot(
-                ax=ax,
-                color="grey",
-                linewidth=0.6
+                ax=ax, color="grey", linewidth=0.6
             )
 
-            total_roads = (
-                len(results[rcp][period]["roads_with_agreement"]) +
-                len(results[rcp][period]["no_agreement"])
+            len(results[rcp][period]["roads_with_agreement"]) + len(
+                results[rcp][period]["no_agreement"]
             )
 
             bins = [-10, -5, -2, 0, 2, 5, 10, 15, 20, 25]
 
             gdf = results[rcp][period]["roads_with_agreement"]
 
-            counts = (
-                gdf
-                .assign(bin=pd.cut(gdf["max_rx1day_pct"], bins=bins))
+            (
+                gdf.assign(bin=pd.cut(gdf["max_rx1day_pct"], bins=bins))
                 .groupby("bin", observed=False)
                 .size()
             )
@@ -708,8 +679,8 @@ def plot_precipitation_climate_change(results, config):
                 "#fb6a4a",  # moderate increase
                 "#de2d26",  # strong increase
                 "#a50f15",  # very strong increase
-                "#770111",   # extreme increase
-                "#360108"
+                "#770111",  # extreme increase
+                "#360108",
             ]
 
             cmap = ListedColormap(colors)
@@ -720,24 +691,25 @@ def plot_precipitation_climate_change(results, config):
                 ax=ax,
                 column="max_rx1day_pct",
                 norm=norm,
-                cmap = cmap,
+                cmap=cmap,
                 linewidth=1.2,
-                legend = False,
-                legend_kwds={"label": "Max RX1day change (%)"}
+                legend=False,
+                legend_kwds={"label": "Max RX1day change (%)"},
             )
 
-            #colorbar
+            # colorbar
             sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
             sm.set_array([])
-
 
             ax.set_axis_off()
 
             # Add basemap
-            cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, 
-                    alpha=0.4, attribution=False)
-
-
+            cx.add_basemap(
+                ax=ax,
+                source=cx.providers.CartoDB.Positron,
+                alpha=0.4,
+                attribution=False,
+            )
 
     rcps_tite = ["4.5", "8.5"]
     periods_title = ["2031 - 2060", "2071 - 2100"]
@@ -747,12 +719,13 @@ def plot_precipitation_climate_change(results, config):
         # Position: x in figure coordinates, y at top of subplots (1 = top)
         x = 0.25 if col == 0 else 0.75  # tweak depending on layout
         fig.text(
-            x, 0.98,  # slightly above top
+            x,
+            0.98,  # slightly above top
             f"RCP {rcp}",
             ha="center",
             va="bottom",
             fontsize=14,
-            fontweight="bold"
+            fontweight="bold",
         )
 
     # Row titles
@@ -760,28 +733,24 @@ def plot_precipitation_climate_change(results, config):
         # Position: y in figure coordinates, x at left of subplots
         y = 0.73 if row == 0 else 0.28  # tweak depending on layout
         fig.text(
-            0.02, y,
+            0.02,
+            y,
             period,
             ha="left",
             va="center",
             fontsize=12,
             rotation=90,
-            fontweight="bold"
+            fontweight="bold",
         )
-            
+
     cax = fig.add_axes([0.25, 0.06, 0.5, 0.025])
 
-    cbar = fig.colorbar(
-        sm,
-        cax=cax,
-        orientation="horizontal"
-    )
+    cbar = fig.colorbar(sm, cax=cax, orientation="horizontal")
 
     cbar.set_label("Change  (%)")
     cbar.set_ticks(bins)
     for ax in axes.flat:
         ax.margins(0)
-
 
     plt.savefig(config.figure_path / "change in Rx1d.png", dpi=300, bbox_inches="tight")
     if config.show_figures:
@@ -800,16 +769,20 @@ def main():
     # =============================================================================
     print("--- starting future flooding analysis ---")
 
-    #load data on future flooding and roads
+    # load data on future flooding and roads
     flood_data, roads, basins = load_data(config)
 
-    #calculate future flooding per basin
-    basins_climate_change, roads_climate_change = calculate_future_intensities_and_return_periods(flood_data, basins, roads, config)
+    # calculate future flooding per basin
+    basins_climate_change, roads_climate_change = (
+        calculate_future_intensities_and_return_periods(
+            flood_data, basins, roads, config
+        )
+    )
 
-    #Plot future return period of floods that currently have a 100 year RP
+    # Plot future return period of floods that currently have a 100 year RP
     plot_basins(basins_climate_change, config)
 
-    #plot the roads that are affected by future return period change
+    # plot the roads that are affected by future return period change
     plot_effect_on_roads(roads, roads_climate_change, config)
     print("\n--- future flooding analysis complete ---")
 
@@ -818,17 +791,19 @@ def main():
     # =============================================================================
     print("\n--- starting future heavy precipitation analysis ---")
 
-    #Chose return period of future maximum precipiation
-    variables = ["Change_T20",] #in data set: "Change_T20","Change_T50","Change_T100","Change_T500","Change_T1000",
+    # Chose return period of future maximum precipiation
+    variables = [
+        "Change_T20",
+    ]  # in data set: "Change_T20","Change_T50","Change_T100","Change_T500","Change_T1000",
 
-    #Calculate the changge in future maximum precipitation
+    # Calculate the changge in future maximum precipitation
     future_precipitation = calculate_future_max_precipitation(config, roads, variables)
 
-    #Visualize the future change in precipitation experienced by roads
+    # Visualize the future change in precipitation experienced by roads
     plot_precipitation_climate_change(future_precipitation, config)
-    
+
     print("\n--- climate change analysis complete ---")
 
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     main()

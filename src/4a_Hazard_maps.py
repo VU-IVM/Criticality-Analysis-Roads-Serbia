@@ -76,7 +76,7 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
     None
         Saves a PNG map and optionally displays it.
     """
-    fig, ax = plt.subplots(figsize=(20, 8), facecolor="white")
+    fig, ax = plt.subplots(figsize=(9, 12), facecolor="white")
 
     # Custom blue colormap
     flood_cmap = LinearSegmentedColormap.from_list(
@@ -103,7 +103,7 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
 
     # Plot the raster
     hazard_mercator.band_data.plot(
-        ax=ax, cmap=flood_cmap, alpha=0.7, vmin=0, vmax=6, add_colorbar=False
+        ax=ax, cmap=flood_cmap, alpha=0.7, vmin=0, vmax=6, add_colorbar=False, add_labels=False,
     )
 
     # Basemap
@@ -146,7 +146,6 @@ def plot_flood_hazard_map(config: NetworkConfig, hazard: xr.Dataset) -> None:
     values = hazard.band_data.values
     _ = values[~np.isnan(values)]
 
-    fig.suptitle("")
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.88)
 
