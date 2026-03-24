@@ -218,7 +218,7 @@ def _extract_value(text: str, key: str) -> Optional[str]:
         if match:
             return match.group(1)
         return None
-    except:
+    except Exception:
         return None
 
 

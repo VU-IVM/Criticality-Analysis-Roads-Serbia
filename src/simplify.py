@@ -131,7 +131,7 @@ def add_topology(network, id_col="id"):
             # Find the nearest node to the start point of the edge
             start_node = nearest_node(start, network.nodes, sindex)
             from_ids.append(start_node[id_col])
-        except:
+        except Exception:
             bugs.append(edge.id)
             from_ids.append(-1)
 
@@ -139,7 +139,7 @@ def add_topology(network, id_col="id"):
             # Find the nearest node to the end point of the edge
             end_node = nearest_node(end, network.nodes, sindex)
             to_ids.append(end_node[id_col])
-        except:
+        except Exception:
             bugs.append(edge.id)
             to_ids.append(-1)
 
@@ -700,7 +700,7 @@ def add_travel_time(network):
         """
         try:
             return edge["distance"] / (edge["maxspeed"] * 1000)  # meters per hour
-        except:
+        except Exception:
             return edge["distance"] / speed_d.get("unclassified")
 
     # Apply the calculate_time function to each row in the edges DataFrame and create a new 'time' column
@@ -919,7 +919,7 @@ def merge_edges(network, print_err=False):
                     [edg.iloc[match_idx] for match_idx in eID],
                     key=lambda match: shapely.distance(nextNode1Geom, (match.geometry)),
                 )
-            except:
+            except Exception:
                 continue
             pos_0_deg.append(nextNode1)
             n2.discard(nextNode1)
@@ -940,7 +940,7 @@ def merge_edges(network, print_err=False):
                     [edg.iloc[match_idx] for match_idx in eID],
                     key=lambda match: shapely.distance(nextNode2Geom, (match.geometry)),
                 )
-            except:
+            except Exception:
                 continue
             pos_0_deg.append(nextNode2)
             n2.discard(nextNode2)
@@ -1203,7 +1203,7 @@ def _intersects(geom, df, sindex, tolerance=1e-9):
         buffer = geom
     try:
         return _intersects_df(buffer, df, sindex)
-    except:
+    except Exception:
         # can exceptionally buffer to an invalid geometry, so try re-buffering
         buffer = shapely.buffer(geom, 0)
         return _intersects_df(buffer, df, sindex)
@@ -1501,21 +1501,21 @@ def fill_attributes(network):
         vals_to_assign = network.edges.groupby("highway")[["lanes", "maxspeed"]].agg(
             pd.Series.mode
         )
-    except:
+    except Exception:
         # If there is an error, fall back on default values
         vals_to_assign = df_lanes.join(df_speed)
 
     try:
         # Check if there are any lane values to assign
         vals_to_assign.lanes.iloc[0]
-    except:
+    except Exception:
         print("NOTE: No lanes values available, falling back on default")
         vals_to_assign = vals_to_assign.join(df_lanes)
 
     try:
         # Check if there are any maxspeed values to assign
         vals_to_assign.maxspeed.iloc[0]
-    except:
+    except Exception:
         print("NOTE: No maxspeed values available, falling back on default")
         vals_to_assign = vals_to_assign.join(df_speed)
 
@@ -1540,7 +1540,7 @@ def fill_attributes(network):
         else:
             try:
                 return re.findall(r"\d+", x)[0]
-            except:
+            except Exception:
                 return x
 
     # Fill empty cells in the lanes column
@@ -1566,10 +1566,10 @@ def fill_attributes(network):
         if isinstance(x.lanes, str):
             try:
                 return int(x.lanes)
-            except:
+            except Exception:
                 try:
                     return int(get_max(re.findall(r"\d+", x.lanes)))
-                except:
+                except Exception:
                     return int(vals_to_assign.loc[x.highway].lanes)
         elif x.lanes is None:
             if isinstance(vals_to_assign.loc[x.highway].lanes, np.ndarray):
@@ -1586,15 +1586,15 @@ def fill_attributes(network):
         if isinstance(x.maxspeed, str):
             try:
                 return [int(s) for s in x.maxspeed.split() if s.isdigit()][0]
-            except:
+            except Exception:
                 try:
                     return int(
                         get_max(vals_to_assign.loc[x.highway.split("_")[0]].maxspeed)
                     )
-                except:
+                except Exception:
                     try:
                         return int(get_max(re.findall(r"\d+", x.maxspeed)))
-                    except:
+                    except Exception:
                         return int(vals_to_assign.loc[x.highway].maxspeed)
         elif x.maxspeed is None:
             if isinstance(vals_to_assign.loc[x.highway].maxspeed, np.ndarray):
@@ -1604,7 +1604,7 @@ def fill_attributes(network):
             else:
                 try:
                     return int(get_max(re.findall(r"\d+", x.maxspeed)))
-                except:
+                except Exception:
                     return int(vals_to_assign.loc[x.highway].maxspeed)
 
         elif np.isnan(x.maxspeed):
@@ -1613,7 +1613,7 @@ def fill_attributes(network):
                     return int(
                         get_max(vals_to_assign.loc[x.highway.split("_")[0]].maxspeed)
                     )
-                except:
+                except Exception:
                     print(vals_to_assign.loc[x.highway].maxspeed)
                     return int(vals_to_assign.loc[x.highway].maxspeed)
             else:

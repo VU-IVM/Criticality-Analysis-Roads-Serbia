@@ -136,7 +136,7 @@ def get_exposure_values(
             values_and_coverage_per_object.index = subset_features.index
             collect_overlay.append(values_and_coverage_per_object)
 
-        except:
+        except Exception:
             continue
 
     if not collect_overlay:
@@ -168,7 +168,7 @@ def _get_river_basin(road_segment, basins):
         return basins.loc[
             road_segment.geometry.intersects(basins.geometry)
         ].HYBAS_ID.values[0]
-    except:
+    except Exception:
         return None
 
 

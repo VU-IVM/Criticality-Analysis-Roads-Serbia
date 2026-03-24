@@ -1101,7 +1101,7 @@ def create_directed_network(
     def fill_speed(x):
         try:
             return config.speed_limits[x.kategorija]
-        except:
+        except Exception:
             return config.default_speed
 
     base_network["road_length"] = base_network.geometry.apply(
