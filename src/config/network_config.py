@@ -46,6 +46,8 @@ class NetworkConfig:
     Path_landslide_data = data_path / "Nestabilne_pojave.shp"
     Path_flooding_climate_change = data_path / "disEnsemble_highExtremes.nc"
     landslide_susceptibility = data_path / "landslide_susceptibility.tif"
+    Path_flood_statistics_per_basin = data_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
+
     
     #####################################################
     # Paths for intermediate results
@@ -71,7 +73,6 @@ class NetworkConfig:
     Path_agriculture_sink = intermediate_results_path / 'agriculture_sinks.parquet'
 
     # hazards under climate change (produced in 4b)
-    Path_flood_statistics_per_basin = intermediate_results_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
     Path_future_floods_change_RP = intermediate_results_path / "Future Floods change in RP.parquet"
     Path_future_flooding_roads = intermediate_results_path / "Future Floods change in RP experienced by roads.parquet"
     Path_precipitation_change_rcp_8_5_far_future = intermediate_results_path / 'change in maximum daily precipitation rcp 85 period 2.parquet'
