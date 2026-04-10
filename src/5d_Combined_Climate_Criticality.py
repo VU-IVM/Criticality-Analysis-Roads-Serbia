@@ -121,6 +121,10 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
     
     crs = gdf_all_critical.crs  # save before the join
 
+    gdf_all_critical = gdf_all_critical.drop(columns=["index_right"], errors="ignore")
+    gdf_hazards = gdf_hazards.drop(columns=["index_right"], errors="ignore")            
+
+
     gdf_hazards_joined = gpd.sjoin(
         gdf_all_critical,
         gdf_hazards[hazard_only_cols].assign(_hazard_len=gdf_hazards.geometry.length),
