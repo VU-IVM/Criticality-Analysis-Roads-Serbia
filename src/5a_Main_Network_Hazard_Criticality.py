@@ -311,7 +311,7 @@ def calculate_vhl_snow_drift(
 
 def read_landslide_data(config: NetworkConfig) -> gpd.GeoDataFrame:
     """
-    Read landslide data shapefile.
+    Read landslide data shapefile and exclude all other unstable occurances. 
 
     Parameters
     ----------
@@ -326,6 +326,8 @@ def read_landslide_data(config: NetworkConfig) -> gpd.GeoDataFrame:
     """
 
     landslides = gpd.read_file(config.Path_landslide_data)
+    #filter to only include actual landslides and not rockfall, etc
+    landslides = landslides[landslides['tip'] == 'Klizište']
     landslides.geometry = landslides.geometry.buffer(10)
 
     return landslides
@@ -405,7 +407,7 @@ def calculate_combined_hazard(
 ) -> gpd.GeoDataFrame:
     """
     Combine flood, snowdrift, and landslide hazard attributes into a unified
-    hazard exposure GeoDataFrame.
+    hazard exposure GeoDataFrame and save to parquet.
 
     Parameters
     ----------
@@ -1383,7 +1385,7 @@ def main():
     If config.print_statistics is True, a summary of the results is printed to the console after the analysis as finished.
     """
 
-    # Load configureation from NetworkConfig class including file paths, and flags
+    # Load configuration from NetworkConfig class including file paths, and flags
     config = NetworkConfig()
 
     # Load the results of the network criticality analysis, flood hazard data and the geometry of the selected country
