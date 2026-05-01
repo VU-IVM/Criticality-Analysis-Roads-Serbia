@@ -22,15 +22,18 @@ warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
 # Metrics to apply log(x+1) transform to before min-max normalization.
 # Applied consistently to all continuous metrics to avoid introducing a
-# comparison bias between sub-indices. The one exception is landslide_exposure,
-# which is binary (0/1) — log(x+1) would map it to {0, log(2)}, which is
-# meaningless and inconsistent with its role as a presence indicator.
+# comparison bias between sub-indices. Exceptions are binary indicators
+# (landslide_exposure, wildfire_risk) — log(x+1) would map them to
+# {0, log(2)}, which is meaningless and inconsistent with their role as
+# presence indicators.
 LOG_TRANSFORM_METRICS = [
     # Hazard exposure
     "flood_depth",
     "future_rainfall_change",
     "future_flood_change",
     "snow_drift",
+    "max_pavement_temp",        # continuous — log transform applied
+    # wildfire_risk intentionally excluded — binary indicator
     # Travel disruption (originally flagged — skewness 6–14)
     "phl",
     "thl",
@@ -96,7 +99,9 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
         'police_delay', 'fire_delay', 'border_delay', 'port_delay', 'railway_delay',
         plus climate metrics ('future_flood_change', 'future_rainfall_change'),
         computed by `add_impact_column(..., predicate='intersects', agg='mean')`
-        after aligning CRS across all sources.
+        after aligning CRS across all sources. 'max_pavement_temp' and
+        'wildfire_risk' are already present in the hazard exposure dataset and
+        are carried through without additional loading.
     """
 
     # Read nation wide data on hazard exposure and the road network
@@ -313,6 +318,8 @@ def calculate_climate_criticaliy_metric(
     gdf_hazards : gpd.GeoDataFrame
         Road-segment dataset already enriched with hazard metrics, disruption
         metrics, and accessibility delays (hospital/fire/police/ports/borders/rail).
+        Must also contain 'max_pavement_temp' (continuous, °C) and 'wildfire_risk'
+        (binary 0/1), both sourced directly from the hazard exposure dataset.
  
     Returns
     -------
@@ -324,20 +331,29 @@ def calculate_climate_criticaliy_metric(
     Behavior
     --------
     Renames key columns, ensures all metrics exist, converts and fills missing
-    values, applies log(x+1) transform to heavily skewed travel metrics (phl,
-    thl, pkl, tkl) before min-max normalization, computes equally-weighted
+    values, applies log(x+1) transform to continuous metrics (including
+    max_pavement_temp) before min-max normalization, computes equally-weighted
     sub-indices, combines them into a climate-criticality index, and classifies
-    all scores into quintiles for mapping and analysis.
- 
+    all scores into quintiles for mapping and analysis. Binary indicators
+    (landslide_exposure, wildfire_risk) are excluded from the log transform.
+
     Log transform rationale
     -----------------------
-    The four travel disruption metrics (phl, thl, pkl, tkl) showed extreme
-    right-skew (skewness 6–14 in diagnostics). Without transformation, a small
-    number of very high-impact segments set the max and compress all other
-    segments toward zero after min-max normalization, leaving travel disruption
-    effectively inert in the final score. Log(x+1) preserves the zero values
-    (log(0+1) = 0) while pulling the extreme tail in, giving the metric a
-    meaningful spread across all segments.
+    Continuous metrics with heavy right-skew are log(x+1)-transformed before
+    normalisation so that extreme outliers do not compress all other segments
+    toward zero. log1p preserves zero values (log(0+1) = 0). Binary indicators
+    (landslide_exposure, wildfire_risk) are excluded — log(x+1) would map them
+    to {0, log(2)}, which is meaningless for a presence/absence flag.
+
+    Clipping rationale (future_rainfall_change, future_flood_change)
+    ----------------------------------------------------------------
+    future_rainfall_change: negative values indicate projected drier conditions,
+    which are not a road-risk driver in this context. The working (log) column
+    is clipped at 0 so they do not invert the normalised score.
+    future_flood_change: derived as (100 - future_flood_return_period). A
+    segment where the future RP increases (lower flood frequency) yields a
+    negative change, which is not a risk signal. Clipped at 0 in the working
+    column only; raw data are preserved.
     """
     # =============================================================================
     # CLIMATE CRITICALITY METRIC
@@ -356,26 +372,39 @@ def calculate_climate_criticaliy_metric(
             "max_depth": "flood_depth",
             "dužina_sn": "snow_drift",
             "datum_evid": "landslide_date",
-            # Add any other renames as needed
+            # future_flood_change renamed to preserve the raw return-period value;
+            # the actual change metric is derived below.
+            "future_flood_change": "future_flood_return_period",
         }
     )
- 
+
+    # Derive change in return period: reduction = higher future flood risk.
+    # Original RP is always 100 years. Raw column is kept for output auditability;
+    # negative values (RP increase = lower risk) are clipped to 0 in section 4.
+    gdf_hazards["future_flood_change"] = 100 - gdf_hazards["future_flood_return_period"]
+
     gdf_hazards["landslide_exposure"] = np.where(
-    gdf_hazards["landslide_date"].notna() & 
-    (gdf_hazards["landslide_date"].astype(str).str.strip() != ""),
-    1.0, 0.0)
- 
+        gdf_hazards["landslide_date"].notna() &
+        (gdf_hazards["landslide_date"].astype(str).str.strip() != ""),
+        1.0, 0.0)
+
+    # Binary wildfire risk: ensure values are strictly 0/1 floats
+    # (handles cases where the source data uses integers or booleans)
+    gdf_hazards["wildfire_risk"] = gdf_hazards["wildfire_risk"].clip(0, 1).astype(float)
+
     # -----------------------------------------------------------------------------
     # 2. DEFINE METRIC GROUPS FOR EACH SUB-INDEX
     # -----------------------------------------------------------------------------
  
-    # Hazard Exposure Sub-Index (H) - 5 metrics
+    # Hazard Exposure Sub-Index (H) - 7 metrics
     hazard_metrics = [
-        "flood_depth",              # F - Maximum inundation depth (cm)
-        "future_rainfall_change",   # R - Projected % change in extreme rainfall
-        "future_flood_change",      # C - Projected % change in river flood magnitude
-        "landslide_exposure",       # L - Binary landslide exposure
-        "snow_drift",               # S - Length affected by snow drift (km)
+        "flood_depth",              # F  - Maximum inundation depth (cm)
+        "future_rainfall_change",   # R  - Projected % change in extreme rainfall
+        "future_flood_change",      # C  - Change in 100-yr flood return period (derived)
+        "landslide_exposure",       # L  - Binary landslide exposure
+        "snow_drift",               # S  - Length affected by snow drift (km)
+        "max_pavement_temp",        # PT - Maximum pavement temperature (continuous)
+        "wildfire_risk",            # W  - Binary wildfire hazard presence
     ]
  
     # National-Scale Travel Disruption Sub-Index (T) - 4 metrics
@@ -386,7 +415,7 @@ def calculate_climate_criticaliy_metric(
         "tkl",   # Tonnage kilometers lost
     ]
  
-    # Local Accessibility Sub-Index (A) - 6 metrics
+    # Local Accessibility Sub-Index (A) - 7 metrics
     accessibility_metrics = [
         "hospital_delay",   # HOS - Hospital access delay
         "fire_delay",       # FIR - Fire station access delay
@@ -428,7 +457,16 @@ def calculate_climate_criticaliy_metric(
             print(f"  log(x+1) applied: {col} → {working_col}")
         else:
             working_metrics.append(col)
- 
+
+    # Clip working columns at 0 — preserves raw data while ensuring
+    # negative values (rainfall decrease, flood RP increase) don't
+    # invert the normalised score.
+    for col in ["future_rainfall_change", "future_flood_change"]:
+        working_col = f"{col}_log" if col in LOG_TRANSFORM_METRICS else col
+        if working_col in gdf_hazards.columns:
+            gdf_hazards[working_col] = gdf_hazards[working_col].clip(lower=0)
+            print(f"  clipped at 0 (working col): {working_col}")
+
     # -----------------------------------------------------------------------------
     # 5. MIN-MAX NORMALIZATION FUNCTION
     # -----------------------------------------------------------------------------
@@ -492,7 +530,7 @@ def calculate_climate_criticaliy_metric(
     travel_norm        = [f"{col}_norm" for col in travel_metrics]
     accessibility_norm = [f"{col}_norm" for col in accessibility_metrics]
  
-    # H = (1/5) × (F + R + C + L + S)
+    # H = (1/7) × (F + R + C + L + S + PT + W)
     gdf_hazards["H_hazard_exposure"]    = gdf_hazards[hazard_norm].mean(axis=1)
     print("sum hazard exposure:", gdf_hazards["H_hazard_exposure"].sum())
  
@@ -500,7 +538,7 @@ def calculate_climate_criticaliy_metric(
     gdf_hazards["T_travel_disruption"]  = gdf_hazards[travel_norm].mean(axis=1)
     print("sum travel disruption", gdf_hazards["T_travel_disruption"].sum())
  
-    # A = (1/6) × (HOS + FIR + POL + PRT + BRD + RWY)
+    # A = (1/7) × (HOS + FIR + POL + FAC + PRT + BRD + RWY)
     gdf_hazards["A_local_accessibility"] = gdf_hazards[accessibility_norm].mean(axis=1)
     print("sum local accessibility", gdf_hazards["A_local_accessibility"].sum())
 
