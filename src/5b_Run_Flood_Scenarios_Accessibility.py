@@ -15,6 +15,22 @@ from exactextract import exact_extract
 from simplify import *
 from config.network_config import NetworkConfig
 
+# Add near your other config constants
+OSM_TO_SERBIAN_CATEGORY = {
+    "motorway": "IA",
+    "trunk":    "IM",
+    "primary":  "IB",
+    "secondary":"IIA",
+    "tertiary": "IIB",
+}
+
+FINAL_BIAS = {
+    "IA":  4.601,
+    "IM":  3.659,
+    "IB":  0.82,
+    "IIA": 0.82,
+    "IIB": 0.82,
+}
 
 # load functions
 def get_average_access_time(df_population, Sink, graph):
@@ -84,7 +100,6 @@ def get_exposure_values(
     world = gpd.read_file(NetworkConfig.world_boundaries)
     country_bounds = world.loc[world.ADM0_A3 == country_iso3].bounds
     world.loc[world.ADM0_A3 == country_iso3].geometry
-
     hazard_country = hazard_map.rio.clip_box(
         minx=country_bounds.minx.values[0],
         miny=country_bounds.miny.values[0],
@@ -92,7 +107,6 @@ def get_exposure_values(
         maxy=country_bounds.maxy.values[0],
     )
     grid_cell_size = 1
-
     gridded = create_grid(
         shapely.box(
             hazard_country.rio.bounds()[0],
@@ -102,13 +116,9 @@ def get_exposure_values(
         ),
         grid_cell_size,
     )
-
     all_bounds = gpd.GeoDataFrame(gridded, columns=["geometry"]).bounds
-
     features_to_clip = base_network.to_crs(4326)
-
     collect_overlay = []
-
     for bounds in tqdm(all_bounds.itertuples(), total=len(all_bounds)):
         try:
             subset_hazard = hazard_country.rio.clip_box(
@@ -117,25 +127,18 @@ def get_exposure_values(
                 maxx=bounds.maxx,
                 maxy=bounds.maxy,
             )
-
             subset_hazard["band_data"] = subset_hazard.band_data.rio.write_nodata(
                 np.nan, inplace=True
             )
-
             subset_features = gpd.clip(features_to_clip, list(bounds)[1:]).to_crs(3857)
-
             if len(subset_features) == 0:
                 continue
-
             subset_hazard = subset_hazard.rio.reproject("EPSG:3857")
-
             values_and_coverage_per_object = exact_extract(
                 subset_hazard, subset_features, ["coverage", "values"], output="pandas"
             )
-
             values_and_coverage_per_object.index = subset_features.index
             collect_overlay.append(values_and_coverage_per_object)
-
         except Exception:
             continue
 
@@ -149,16 +152,25 @@ def get_exposure_values(
         pd.concat(collect_overlay), left_index=True, right_index=True
     )
 
-    def Flagged_exposed_segments(row):
-        if pd.isna(row["bridge"]) or row["bridge"] == "no":
-            return any(val > Threshold for val in row["values"])
-        else:
-            return any(val > Stru_Threshold for val in row["values"])
+    def adjust_depths(row):
+        """Subtract road-category bias from raw sampled depths, clamp to 0."""
+        serbian_cat = OSM_TO_SERBIAN_CATEGORY.get(row.get("highway"))
+        bias = FINAL_BIAS.get(serbian_cat, 0.0)
+        if bias == 0.0:
+            return row["values"]
+        return [max(v - bias, 0.0) for v in row["values"]]
 
-    base_network["exposed"] = base_network.progress_apply(
-        Flagged_exposed_segments, axis=1
-    )
-    base_network["exposed_values_depth"] = base_network["values"]
+    base_network["adjusted_values"] = base_network.progress_apply(adjust_depths, axis=1)
+
+    def flagged_exposed_segments(row):
+        if pd.isna(row["bridge"]) or row["bridge"] == "no":
+            return any(val > Threshold for val in row["adjusted_values"])
+        else:
+            return any(val > Stru_Threshold for val in row["adjusted_values"])
+
+    base_network["exposed"] = base_network.progress_apply(flagged_exposed_segments, axis=1)
+    base_network["exposed_values_depth"] = base_network["adjusted_values"]
+    base_network.drop(columns=["adjusted_values"], inplace=True)
 
     return base_network
 
@@ -1261,6 +1273,14 @@ def flood_exposure_analysis_agriculture(
 
     print("\nAnalysis completed successfully!")
 
+def normalise_exposed_column(network: gpd.GeoDataFrame, col: str = "exposed") -> gpd.GeoDataFrame:
+    """
+    Ensure the exposed column is a clean boolean regardless of whether the
+    source raster was binary (0/1 int) or continuous float depth values.
+    NaN → False (no data = not exposed).
+    """
+    network[col] = network[col].fillna(0).astype(float) > 0
+    return network
 
 def main():
     """
@@ -1325,6 +1345,8 @@ def main():
     # Compute baseline average access times (normal conditions)
     print("Calculating average access times from factories to road border crossings...")
     df_factories = get_average_access_time(df_factories, Sink, graph)
+
+    base_network = normalise_exposed_column(base_network)
 
     # Assess access disruption under flooding
     print("Calculating factory access times under flooding scenarios...")

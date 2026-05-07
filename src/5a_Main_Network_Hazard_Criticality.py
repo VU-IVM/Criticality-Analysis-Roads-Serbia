@@ -742,6 +742,7 @@ def main():
     Run the full multi-hazard road network exposure analysis.
     """
     config = NetworkConfig()
+    config.show_figures = True
 
     criticality_results, flood_data, country_plot = load_data(config)
 
