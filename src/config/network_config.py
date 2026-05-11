@@ -18,6 +18,8 @@ class NetworkConfig:
     climate_change_precipitation_folder = (
         data_path / "Climate Change Precipitation" / "results"
     )
+    temperature_input_folder = (data_path / "Temperatures climate change")
+    temperature_figures_folder = BASE_DIR / "figures" / "temperature"
 
     ##########################################
     # Input files
@@ -47,6 +49,11 @@ class NetworkConfig:
     Path_flooding_climate_change = data_path / "disEnsemble_highExtremes.nc"
     landslide_susceptibility = data_path / "landslide_susceptibility.tif"
     Path_flood_statistics_per_basin = data_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
+    wildfire_risk = data_path / "wildfire risk" / "stepen ugrozenosti od pozara Srbijasume.tif"
+    historic_temperature = temperature_input_folder / "TX7D_1961-1990.tif"
+    current_temperature = temperature_input_folder / "TX7D_1991-2020.tif" 
+    current_max_pavement_temperature = temperature_input_folder / "TPAV_2021-2025.tif"
+    degree_of_urbanization = data_path / "GHS_SMOD_E2025_GLOBE_R2023A_54009_1000_V2_0_R4_C20.tif"
 
     
     #####################################################
@@ -76,6 +83,11 @@ class NetworkConfig:
     Path_future_floods_change_RP = intermediate_results_path / "Future Floods change in RP.parquet"
     Path_future_flooding_roads = intermediate_results_path / "Future Floods change in RP experienced by roads.parquet"
     Path_precipitation_change_rcp_8_5_far_future = intermediate_results_path / 'change in maximum daily precipitation rcp 85 period 2.parquet'
+
+    # heat data and impacts (produced in 4c)
+    Future_pavement_temperatures = intermediate_results_path / "future_pavement_temperatures.tif"
+    roads_current_max_pavement_temperature = intermediate_results_path / "PERS_directed_final_with_temp.parquet"
+    roads_future_max_pavement_temperature = intermediate_results_path / "PERS_directed_final_with_temp_uhi.parquet"
    
     # combined list of all roads that are exposed to at least one hazard, its intensity and the criticality
     # of each road (produced in 5a)
@@ -91,7 +103,7 @@ class NetworkConfig:
     Path_railway_impacts = intermediate_results_path / 'rail_impacts.parquet'
 
     #final climate criticality ranking (produced in 5d, also saved as parquet and gpkg)
-    Path_climate_criticality_results = results_path / 'VUA_Climate_Criticality_PERS.xlsx'
+    Path_climate_criticality_results = results_path / 'Climate_Criticality_PuteviSrbije.xlsx'
 
 
 
