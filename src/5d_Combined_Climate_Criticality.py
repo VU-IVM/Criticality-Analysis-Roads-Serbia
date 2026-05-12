@@ -23,7 +23,7 @@ warnings.simplefilter(action="ignore", category=RuntimeWarning)
 # Metrics to apply log(x+1) transform to before min-max normalization.
 # Applied consistently to all continuous metrics to avoid introducing a
 # comparison bias between sub-indices. Exceptions are binary indicators
-# (landslide_exposure, wildfire_risk) — log(x+1) would map them to
+# (landslide_exposure, wildfire_susceptibility) — log(x+1) would map them to
 # {0, log(2)}, which is meaningless and inconsistent with their role as
 # presence indicators.
 LOG_TRANSFORM_METRICS = [
@@ -33,7 +33,7 @@ LOG_TRANSFORM_METRICS = [
     "future_flood_change",
     "snow_drift",
     "max_pavement_temp",        # continuous — log transform applied
-    # wildfire_risk intentionally excluded — binary indicator
+    # wildfire_susceptibility intentionally excluded — binary indicator
     # Travel disruption (originally flagged — skewness 6–14)
     "phl",
     "thl",
@@ -100,7 +100,7 @@ def load_and_preprocess_criticality_data(config: NetworkConfig) -> gpd.GeoDataFr
         plus climate metrics ('future_flood_change', 'future_rainfall_change'),
         computed by `add_impact_column(..., predicate='intersects', agg='mean')`
         after aligning CRS across all sources. 'max_pavement_temp' and
-        'wildfire_risk' are already present in the hazard exposure dataset and
+        'wildfire_susceptibility' are already present in the hazard exposure dataset and
         are carried through without additional loading.
     """
 
@@ -318,7 +318,7 @@ def calculate_climate_criticaliy_metric(
     gdf_hazards : gpd.GeoDataFrame
         Road-segment dataset already enriched with hazard metrics, disruption
         metrics, and accessibility delays (hospital/fire/police/ports/borders/rail).
-        Must also contain 'max_pavement_temp' (continuous, °C) and 'wildfire_risk'
+        Must also contain 'max_pavement_temp' (continuous, °C) and 'wildfire_susceptibility'
         (binary 0/1), both sourced directly from the hazard exposure dataset.
  
     Returns
@@ -335,14 +335,14 @@ def calculate_climate_criticaliy_metric(
     max_pavement_temp) before min-max normalization, computes equally-weighted
     sub-indices, combines them into a climate-criticality index, and classifies
     all scores into quintiles for mapping and analysis. Binary indicators
-    (landslide_exposure, wildfire_risk) are excluded from the log transform.
+    (landslide_exposure, wildfire_susceptibility) are excluded from the log transform.
 
     Log transform rationale
     -----------------------
     Continuous metrics with heavy right-skew are log(x+1)-transformed before
     normalisation so that extreme outliers do not compress all other segments
     toward zero. log1p preserves zero values (log(0+1) = 0). Binary indicators
-    (landslide_exposure, wildfire_risk) are excluded — log(x+1) would map them
+    (landslide_exposure, wildfire_susceptibility) are excluded — log(x+1) would map them
     to {0, log(2)}, which is meaningless for a presence/absence flag.
 
     Clipping rationale (future_rainfall_change, future_flood_change)
@@ -390,7 +390,7 @@ def calculate_climate_criticaliy_metric(
 
     # Binary wildfire risk: ensure values are strictly 0/1 floats
     # (handles cases where the source data uses integers or booleans)
-    gdf_hazards["wildfire_risk"] = gdf_hazards["wildfire_risk"].clip(0, 1).astype(float)
+    gdf_hazards["wildfire_susceptibility"] = gdf_hazards["wildfire_susc"].clip(0, 1).astype(float)
 
     # -----------------------------------------------------------------------------
     # 2. DEFINE METRIC GROUPS FOR EACH SUB-INDEX
@@ -404,7 +404,7 @@ def calculate_climate_criticaliy_metric(
         "landslide_exposure",       # L  - Binary landslide exposure
         "snow_drift",               # S  - Length affected by snow drift (km)
         "max_pavement_temp",        # PT - Maximum pavement temperature (continuous)
-        "wildfire_risk",            # W  - Binary wildfire hazard presence
+        "wildfire_susceptibility",            # W  - Binary wildfire hazard presence
     ]
  
     # National-Scale Travel Disruption Sub-Index (T) - 4 metrics
@@ -865,7 +865,7 @@ def print_statistics(gdf_hazards: gpd.GeoDataFrame, config: NetworkConfig) -> No
     -------
     None
         Prints multi-section textual summaries to the console and saves a
-        comprehensive Excel file 'VUA_Climate_Criticality_PERS.xlsx'.
+        comprehensive Excel file 'Climate_Criticality_PuteviSrbije.xlsx'.
 
     Behavior
     --------
