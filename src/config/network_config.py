@@ -68,7 +68,7 @@ class NetworkConfig:
     Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
 
     # baseline accessibility results
-    Path_firefighter_accessibilty = intermediate_results_path / 'firefighter_settle_results.parquet'
+    Path_firefighter_accessibilty = intermediate_results_path / 'firefighter_accessibility_results.parquet'
     Path_firefighters_sink = intermediate_results_path / 'firefighters.parquet'
     Path_hospital_accessibilty = intermediate_results_path / 'hospital_accessibility_results.parquet'
     Path_hospital_sink = intermediate_results_path / 'hospitals.parquet'

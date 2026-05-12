@@ -1254,10 +1254,12 @@ def main():
     acessibility_firefighters = get_distance_to_nearest_facility(
         df_settlements, sink_firefighters, graph
     )
+    # give access time column a meaningful name
+    acessibility_firefighters_save = acessibility_firefighters.rename(columns={'closest_sink_total_fft': 'travel_time_ff'})
 
     # Save results of accessibility analysis and firefighter locations to parquet
     save_accessibilty_results(
-        config, acessibility_firefighters, sink_firefighters, "firefighters"
+        config, acessibility_firefighters_save, sink_firefighters, "firefighters"
     )
     print(f"Saved results to {config.Path_firefighter_accessibilty}")
     print(f"Saved results to {config.Path_firefighters_sink}")
@@ -1280,8 +1282,11 @@ def main():
         df_settlements, sink_hospitals, graph
     )
 
+    # give access time column a meaningful name
+    acessibility_hospitals_save = acessibility_hospitals.rename(columns={'closest_sink_total_fft': 'travel_time_hosp'})
+
     save_accessibilty_results(
-        config, acessibility_hospitals, sink_hospitals, "hospitals"
+        config, acessibility_hospitals_save, sink_hospitals, "hospitals"
     )
     print(f"Saved results to {config.Path_hospital_accessibilty}")
     print(f"Saved results to {config.Path_hospital_sink}")
@@ -1304,8 +1309,11 @@ def main():
         df_settlements, police_stations, graph
     )
 
+    # give access time column a meaningful name
+    acessibility_police_stations_save = acessibility_police_stations.rename(columns={'closest_sink_total_fft': 'travel_time_pol'})
+
     save_accessibilty_results(
-        config, acessibility_police_stations, police_stations, "police"
+        config, acessibility_police_stations_save, police_stations, "police"
     )
     print(f"Saved results to {config.Path_police_accessibilty}")
     print(f"Saved results to {config.Path_police_sink}")

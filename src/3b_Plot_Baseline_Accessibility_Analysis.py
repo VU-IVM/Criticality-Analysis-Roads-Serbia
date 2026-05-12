@@ -43,14 +43,17 @@ def load_accessibility_results(
 
     if facility_type == "firefighters":
         gdf = gpd.read_parquet(config.Path_firefighter_accessibilty)
+        gdf = gdf.rename(columns={'travel_time_ff': 'closest_sink_total_fft'})
         Sink = gpd.read_parquet(config.Path_firefighters_sink)
-
+        
     elif facility_type == "hospitals":
         gdf = gpd.read_parquet(config.Path_hospital_accessibilty)
+        gdf = gdf.rename(columns={'travel_time_hosp': 'closest_sink_total_fft'})
         Sink = gpd.read_parquet(config.Path_hospital_sink)
 
     elif facility_type == "police":
         gdf = gpd.read_parquet(config.Path_police_accessibilty)
+        gdf = gdf.rename(columns={'travel_time_pol': 'closest_sink_total_fft'})
         Sink = gpd.read_parquet(config.Path_police_sink)
 
     elif facility_type == "factories":
