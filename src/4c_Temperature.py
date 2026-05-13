@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import rasterio
+import pandas as pd
 import geopandas as gpd
 from pathlib import Path
 import contextily as cx
@@ -25,7 +27,8 @@ from rasterio.transform import rowcol
 
 from config.network_config import NetworkConfig
 
-    
+sys.path.append(str(NetworkConfig.BASE_DIR))
+from utils.arcgis import save_lyrx_layer    
 
 # ── settings ───────────────────────────────────────────────────────────
 OUTPUT_FOLDER  = NetworkConfig.temperature_figures_folder    # Folder to save PNGs; set to None to only display
@@ -142,7 +145,9 @@ def _save_or_show(fig, output_folder, stem):
         out_path = os.path.join(output_folder, f"{stem}.png")
         fig.savefig(out_path, dpi=DPI, bbox_inches="tight")
         print(f"  Saved → {out_path}")
-    plt.show()
+    
+    if NetworkConfig.show_figures:
+        plt.show()
 
 def mask_to_serbia(data, bounds, crs, serbia_gdf):
     """
@@ -575,6 +580,37 @@ def assign_and_plot_road_temperatures(raster_data, raster_bounds, raster_crs,
     cbar.ax.set_xticklabels(["50", "53", "56", "59", "62", "64"], fontsize=8)
 
     stem = output_parquet.stem
+
+    # ── Classify into bins for ArcGIS styling ────────────────────────────────
+    bin_labels = [f"{lo}–{hi} °C" for lo, hi in zip(ABS_BINS_PAV[:-1], ABS_BINS_PAV[1:])]
+    roads["temp_class"] = pd.cut(
+        roads["max_temp"],
+        bins=ABS_BINS_PAV,
+        labels=bin_labels,
+        include_lowest=True,
+    ).astype(str)
+    roads["temp_class"] = roads["temp_class"].where(roads["max_temp"].notna(), other="No data")
+
+    # ── Save GeoPackage + ArcGIS layer ───────────────────────────────────────
+    original_crs = roads.crs
+    roads = roads.to_crs(original_crs)  # already in original CRS here, no reproject needed
+
+    temp_labels = ["No data"] + bin_labels
+    temp_colors = ["#d3d3d3"] + ABS_COLORS_PAV
+    temp_widths = {label: 1.2 for label in temp_labels}  # uniform width
+
+    save_lyrx_layer(
+        gdf=roads,
+        gpkg_path=NetworkConfig.arcgis_gpgk / f"{stem}.gpkg",
+        lyrx_path=NetworkConfig.arcgis_results / f"{stem}.lyrx",
+        layer_name=stem,
+        labels=temp_labels,
+        colors=temp_colors,
+        width_mapping=temp_widths,
+        field="temp_class",
+        title=title or stem,
+    )
+
     _save_or_show(fig, output_folder, stem)
 
 
