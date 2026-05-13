@@ -88,8 +88,8 @@ class NetworkConfig:
 
     # heat data and impacts (produced in 4c)
     Future_pavement_temperatures = intermediate_results_path / "future_pavement_temperatures.tif"
-    roads_current_max_pavement_temperature = intermediate_results_path / "PERS_directed_final_with_temp.parquet"
-    roads_future_max_pavement_temperature = intermediate_results_path / "PERS_directed_final_with_temp_uhi.parquet"
+    roads_current_max_pavement_temperature = intermediate_results_path / "roads_current_max_pavement_temperatures.parquet"
+    roads_future_max_pavement_temperature = intermediate_results_path / "roads_future_max_pavement_temperatures.parquet"
    
     # combined list of all roads that are exposed to at least one hazard, its intensity and the criticality
     # of each road (produced in 5a)
