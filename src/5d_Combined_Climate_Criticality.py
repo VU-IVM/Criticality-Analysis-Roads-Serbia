@@ -1,5 +1,5 @@
 # Standard library
-import warnings
+import warnings, sys
 
 # Third-party - Data and scientific computing
 import contextily as cx
@@ -15,6 +15,9 @@ from matplotlib.patches import Patch
 from typing import Any
 
 from config.network_config import NetworkConfig
+
+sys.path.append(str(NetworkConfig.BASE_DIR))
+from utils.arcgis import save_lyrx_layer
 
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -49,7 +52,6 @@ LOG_TRANSFORM_METRICS = [
     "railway_delay",
     # landslide_exposure intentionally excluded — binary indicator
 ]
-
 
 
 def add_impact_column(
@@ -647,6 +649,8 @@ def plot_climate_criticality_components(
         "High": 2.0,
         "Very High": 3.0,
     }
+    # Save original CRS
+    original_crs = gdf_hazards.crs
 
     # Ensure CRS is Web Mercator for contextily
     gdf_hazards = gdf_hazards.to_crs(epsg=3857)
@@ -731,6 +735,34 @@ def plot_climate_criticality_components(
         dpi=300,
         bbox_inches="tight",
     )
+
+    ##############################################
+    # Save each of the subindicies as ArcGIS layer
+    ##############################################
+
+    # Restore original CRS and save each subindex separately
+    gdf_hazards = gdf_hazards.to_crs(original_crs)
+
+    subindex_configs = [
+        ("H_class", "hazard_exposure",        "Hazard Exposure"),
+        ("T_class", "travel_disruption",       "National-Scale Travel Disruption"),
+        ("A_class", "local_accessibility",     "Local Accessibility"),
+    ]
+
+    for field, name, title in subindex_configs:
+
+        save_lyrx_layer(
+            gdf=gdf_hazards,
+            gpkg_path=config.arcgis_gpgk / f"{name}.gpkg",
+            lyrx_path=config.arcgis_results / f"{name}.lyrx",
+            layer_name=name,
+            labels=labels,
+            colors=colors,
+            width_mapping=width_mapping,
+            field=field,
+            title=title,
+        )
+
     if config.show_figures:
         plt.show()
 
@@ -785,6 +817,9 @@ def plot_combined_climate_criticality(
 
     # Apply classification
     gdf_hazards["mean_class"] = classify_quintiles(gdf_hazards["criticality_mean"])
+
+    # Save original CRS
+    original_crs = gdf_hazards.crs
 
     # Ensure Web Mercator for plotting
     gdf_hazards = gdf_hazards.to_crs(epsg=3857)
@@ -843,6 +878,22 @@ def plot_combined_climate_criticality(
         dpi=150,
         bbox_inches="tight",
     )
+
+    # Restore original CRS and save
+    gdf_hazards = gdf_hazards.to_crs(original_crs)
+
+    save_lyrx_layer(
+        gdf=gdf_hazards,
+        gpkg_path=config.arcgis_gpgk / "climate_criticality_index.gpkg",
+        lyrx_path=config.arcgis_results / "climate_criticality_index.lyrx",
+        layer_name="climate_criticality",
+        labels=labels,
+        colors=colors,
+        width_mapping=width_mapping,
+        field="mean_class",
+        title="Climate Criticality Metric",
+    )
+
     if config.show_figures:
         plt.show()
 

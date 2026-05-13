@@ -12,6 +12,8 @@ class NetworkConfig:
     data_path = BASE_DIR / "input_files"
     intermediate_results_path = BASE_DIR / "intermediate_results"
     results_path = BASE_DIR / "results"
+    arcgis_results = results_path / "ArcGIS layers"
+    arcgis_gpgk = arcgis_results / "Geopackages"
 
     accessibility_analysis_path = BASE_DIR / "accessibility_analysis"
     figure_path = BASE_DIR / "figures"
@@ -123,3 +125,23 @@ class NetworkConfig:
     ######################################################
     show_figures = False #Flag to set whether plots will be shown in a pop up window or not
     print_statistics = True #prints summary of the analysis to the console
+
+
+    #####################################################
+    # Make sure all folders exist
+    #####################################################
+
+    def __post_init__(self):
+        for path in [
+            self.data_path,
+            self.intermediate_results_path,
+            self.results_path,
+            self.arcgis_results,
+            self.arcgis_gpgk,
+            self.accessibility_analysis_path,
+            self.figure_path,
+            self.climate_change_precipitation_folder,
+            self.temperature_input_folder,
+            self.temperature_figures_folder,
+        ]:
+            path.mkdir(parents=True, exist_ok=True)
