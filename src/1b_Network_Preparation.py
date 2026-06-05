@@ -1078,7 +1078,19 @@ def create_directed_network(
     base_network = net.edges.set_crs(AADT_Serbia.crs)
 
     # Filter for roads that are not oneway
-    non_oneway_roads = base_network[~base_network["smer_gdf1"].isin(["L", "D"])]
+    non_oneway_mask = ~base_network["smer_gdf1"].isin(["L", "D"])
+
+    # Diagnostic: print all smer_gdf1 values present on non-oneway roads
+    smer_counts = base_network.loc[non_oneway_mask, "smer_gdf1"].value_counts(dropna=False)
+    print(f"\nNon-oneway smer_gdf1 values (total {non_oneway_mask.sum()} roads):")
+    for val, count in smer_counts.items():
+        print(f"  {repr(val)}: {count}")
+
+    # Halve AADT on bidirectional roads — original values are sum of both directions
+    base_network.loc[non_oneway_mask, config.traffic_types] = (
+        base_network.loc[non_oneway_mask, config.traffic_types] / 2
+    )
+    non_oneway_roads = base_network[non_oneway_mask]
 
     # Create reverse edges
     def reverse_road(row):
