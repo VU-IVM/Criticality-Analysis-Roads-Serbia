@@ -1,12 +1,54 @@
 """
-Network Preparation Module
+1b — Network Preparation
+========================
 
-This module prepares the Serbian road network by:
-- Loading and snapping the network
-- Splitting edges at nodes
-- Merging AADT traffic data
-- Creating directed network
-- Generating visualizations
+Purpose
+-------
+Build the directed, AADT-attributed road network used in all downstream criticality
+analyses.  Takes raw road geometry and traffic counts as input and produces a
+topologically clean, directed network with travel-time attributes.
+
+Inputs
+------
+- Road network parquet  (NetworkConfig.Network_PERS_Corr)
+  Pre-processed Serbian road network: geometry + road attributes.
+- AADT traffic data shapefile  (NetworkConfig.AADT_data)
+  Official PGDS counts per road section, keyed by ``oznaka_deo``.
+- Country boundaries shapefile  (NetworkConfig.world_boundaries)
+  Used to exclude Kosovo road segments.
+
+Outputs
+-------
+- intermediate_results/PERS_directed_final.parquet   Primary output: directed network
+  with AADT, speed, and free-flow travel time.  Used by all downstream scripts.
+- intermediate_results/PERS_directed_final.shp/.gpkg  Same in shapefile / GeoPackage.
+- intermediate_results/PERS_dropped_features.parquet  Roads excluded from the giant
+  component (written only when > 5% of total length is dropped).
+- figures/AADT_categories_combined.png  Six-panel AADT map by vehicle category.
+- figures/giant_component_dropped_roads.png  Included vs. excluded roads map
+  (written only when > 5% of total length is dropped).
+
+Key Processing Steps
+--------------------
+1. Load & deduplicate — read road network parquet; drop exact duplicate features.
+2. Iterative snapping — snap road endpoints within 2 m of nearby endpoints or
+   segments (up to 20 iterations); round coordinates to a 1 cm grid so touching
+   nodes become bit-identical.
+3. Topology build (pass 1) — add endpoints, split edges at shared nodes
+   (``split_edges_at_nodes``), assign node and edge IDs.
+4. AADT merge — join traffic counts by ``oznaka_deo`` (attribute match first, then
+   spatial intersection with >= 50% overlap); fill remaining gaps via neighbour
+   interpolation (pass 1) and road-category median with neighbour cap (pass 2).
+5. Kosovo filter — remove all segments intersecting the Kosovo boundary polygon.
+6. Topology build (pass 2) — re-apply 1 cm precision rounding; rebuild topology;
+   merge near-coincident nodes (union-find, 0.1 m tolerance).
+7. Directed network — halve AADT on bidirectional roads (originals are the
+   two-direction sum); add reversed edges for all non-oneway roads
+   (``smer_gdf1`` not in {L, D}).
+8. Speed & travel time — assign speed limits by ``kategorija``; compute
+   ``road_length`` (km) and ``fft`` (free-flow travel time in hours).
+9. Giant component check — extract weakly-connected giant component; reconnect
+   topology-error roads within 2 m of main network; assert >= 95% length retained.
 """
 
 # Standard library

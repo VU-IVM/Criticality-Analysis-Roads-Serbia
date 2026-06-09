@@ -1,9 +1,37 @@
 # Converted from 1a_NetworkFigures.ipynb
 """
-Network Figures Generation Module
+1a — Network Figures
+====================
 
-This module generates road network visualizations for Serbian roads and OSM data,
-including network comparisons and length statistics.
+Purpose
+-------
+Produce reference visualisations of the Serbian official road network and the
+OpenStreetMap (OSM) road network to verify data coverage and quality before analysis.
+
+Inputs
+------
+- Official Serbian road network shapefile  (NetworkConfig.Original_road_network)
+  Attribute ``kategorija`` (IA / IM / IB / IIA / IIB) used for road category.
+- OpenStreetMap road data for Serbia in .pbf format  (NetworkConfig.osm_path)
+
+Outputs
+-------
+- figures/osm_road_network.png         OSM road network map coloured by category
+- figures/road_categories.png          Serbian official network map by road category
+- figures/road_network_comparison.png  Side-by-side comparison of official vs. OSM
+- figures/road_length_by_category.png  Bar chart of total OSM network length per category
+
+Key Processing Steps
+--------------------
+1. Load OSM data — read .pbf, extract ``highway`` tags from the ``other_tags`` field.
+2. Categorise roads — map OSM highway types to six groups (motorway, trunk, primary,
+   secondary, tertiary, other) aligned with the Serbian hierarchy
+   (IA → motorway, IM → trunk, IB → primary, IIA → secondary, IIB → tertiary).
+3. Plot individual networks — Serbian official network coloured by ``kategorija``;
+   OSM network coloured by mapped category; both use a CartoDB Positron basemap.
+4. Side-by-side comparison — two-panel figure for direct visual comparison.
+5. Length statistics — total road length per OSM category, bar chart with log scale
+   when the max/min ratio exceeds 100.
 """
 
 # Standard library
