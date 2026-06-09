@@ -82,6 +82,10 @@ class NetworkPrepConfig:
     # Network snapping parameters in meters for topology errors (e.g., small gaps at intersections)
     snap_tolerance: float = 2.0
     snap_search_buffer: float = 30.0  # radius
+    # Precision grid (meters) applied after snapping so touching endpoints become bit-identical —
+    # otherwise floating-point residue from shapely.snap leaves "duplicate" nodes that the
+    # topology builder treats as disconnected, dropping roads that visually touch the network.
+    snap_precision_grid_size: float = 0.01
     snap_max_iterations: int = (
         20  # maximum number of iterations to prevent infinite loops
     )
@@ -424,6 +428,13 @@ def snap_network_iteratively(
         else:
             print("Snapped network iteratively.")
             print(f"\nTotal snaps made: {total_snaps}")
+
+    # Round coordinates onto a fixed precision grid so that endpoints which now touch
+    # (post-snapping) become bit-identical rather than differing by floating-point residue —
+    # this lets node deduplication and topology building correctly merge them into shared nodes.
+    gdf["geometry"] = gdf["geometry"].apply(
+        lambda geom: shapely.set_precision(geom, grid_size=config.snap_precision_grid_size)
+    )
     return gdf
 
 
@@ -1070,12 +1081,52 @@ def create_directed_network(
     Returns:
         Directed network with speed and travel time attributes
     """
+    # Re-apply precision grid — split_edges_at_nodes can introduce new vertex coordinates
+    # with floating-point residue after the initial precision rounding.
+    AADT_Serbia = AADT_Serbia.copy()
+    AADT_Serbia["geometry"] = AADT_Serbia["geometry"].apply(
+        lambda geom: shapely.set_precision(geom, grid_size=config.snap_precision_grid_size)
+    )
+
     # Prepare network topology
     net = Network(edges=AADT_Serbia)
     net = add_endpoints(net)
     net = add_ids(net)
     net = add_topology(net)
     base_network = net.edges.set_crs(AADT_Serbia.crs)
+
+    # Merge near-coincident nodes to fix T-junction topology failures.
+    # Floating-point residue from shapely.ops.split can leave sub-cm coordinate
+    # differences between nodes that should be the same junction. Union-find merges
+    # any nodes within node_merge_tolerance — well below real road gaps (~5 m).
+    node_merge_tolerance = 0.1  # meters
+
+    _nodes_df = net.nodes.copy().reset_index(drop=True)
+    _parent = list(range(len(_nodes_df)))
+
+    def _find_root(x):
+        while _parent[x] != x:
+            _parent[x] = _parent[_parent[x]]
+            x = _parent[x]
+        return x
+
+    _node_tree = STRtree(_nodes_df.geometry.values)
+    for _i in range(len(_nodes_df)):
+        for _j in _node_tree.query(_nodes_df.geometry.iloc[_i].buffer(node_merge_tolerance)):
+            if _j != _i:
+                _ri, _rj = _find_root(_i), _find_root(_j)
+                if _ri != _rj:
+                    _parent[max(_ri, _rj)] = min(_ri, _rj)
+
+    _node_ids = _nodes_df["id"].values
+    _old_to_canon = {
+        int(_node_ids[_i]): int(_node_ids[_find_root(_i)]) for _i in range(len(_nodes_df))
+    }
+    _n_merged = len(_nodes_df) - len(set(_old_to_canon.values()))
+    print(f"  Node merge: {_n_merged} near-coincident nodes collapsed (tolerance={node_merge_tolerance} m)")
+
+    base_network["from_id"] = base_network["from_id"].map(_old_to_canon).astype(int)
+    base_network["to_id"] = base_network["to_id"].map(_old_to_canon).astype(int)
 
     # Filter for roads that are not oneway
     non_oneway_mask = ~base_network["smer_gdf1"].isin(["L", "D"])
@@ -1147,8 +1198,79 @@ def create_igraph_and_export(
     graph = ig.Graph.TupleList(
         edges.itertuples(index=False), edge_attrs=list(edges.columns)[2:], directed=True
     )
-    graph = graph.connected_components().giant()
-    edges = edges[edges["id"].isin(graph.es["id"])]
+
+    # Use weak connectivity — treats the network as undirected for component extraction.
+    # Strong connectivity is too strict for road networks: oneway roads can form
+    # "enter-only" clusters that are weakly connected but strongly isolated.
+    giant = graph.connected_components(mode="weak").giant()
+    giant_ids = set(giant.es["id"])
+    dropped_mask = ~edges["id"].isin(giant_ids)
+    n_dropped = int(dropped_mask.sum())
+
+    # Reconnect any remaining topology-error roads: dropped roads whose endpoint
+    # is within the snap tolerance (2 m) of the kept network are precision/split
+    # failures, not genuine gaps — force-include them.
+    RECONNECT_THRESHOLD = 2.0  # meters
+
+    if n_dropped > 0:
+        _kept_geom = edges.loc[~dropped_mask].geometry.union_all()
+        _drop_dist = edges.loc[dropped_mask].geometry.apply(
+            lambda g: min(
+                Point(g.coords[0]).distance(_kept_geom),
+                Point(g.coords[-1]).distance(_kept_geom),
+            )
+        )
+        _reconnect_idx = _drop_dist[_drop_dist <= RECONNECT_THRESHOLD].index
+        if len(_reconnect_idx) > 0:
+            giant_ids |= set(edges.loc[_reconnect_idx, "id"])
+            dropped_mask = ~edges["id"].isin(giant_ids)
+            n_dropped = int(dropped_mask.sum())
+            print(
+                f"Reconnected {len(_reconnect_idx)} topology-error roads "
+                f"(endpoint <= {RECONNECT_THRESHOLD} m from kept network)."
+            )
+
+    if n_dropped == 0:
+        print("Giant component check: no roads dropped, full network is connected.")
+    else:
+        total_length = edges["road_length"].sum()
+        giant_length = edges.loc[~dropped_mask, "road_length"].sum()
+        dropped_length = edges.loc[dropped_mask, "road_length"].sum()
+        length_fraction = giant_length / total_length
+
+        print(
+            f"Giant component check: {n_dropped} of {len(edges)} roads "
+            f"({100 * n_dropped / len(edges):.2f}%) dropped."
+        )
+        print(
+            f"  By number of roads : kept {len(edges) - n_dropped}/{len(edges)} "
+            f"({100 * (len(edges) - n_dropped) / len(edges):.2f}%)"
+        )
+        print(
+            f"  By road length     : kept {giant_length:.2f}/{total_length:.2f} km "
+            f"({100 * length_fraction:.2f}%), dropped {dropped_length:.2f} km"
+        )
+
+        if length_fraction < 0.95:
+            fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+            edges.loc[~dropped_mask].plot(ax=ax, color="grey", linewidth=0.5, label="Included")
+            edges.loc[dropped_mask].plot(ax=ax, color="red", linewidth=1.5, label="Dropped")
+            ax.legend(title="Giant component check", loc="upper right")
+            ax.axis("off")
+            plt.savefig(
+                config.figures_path / "giant_component_dropped_roads.png",
+                dpi=config.figure_dpi,
+                bbox_inches="tight",
+            )
+            if NetworkConfig.show_figures:
+                plt.show()
+
+            assert length_fraction >= 0.95, (
+                f"Giant component represents only {100 * length_fraction:.2f}% of the original "
+                f"network length — below the required 95% threshold."
+            )
+
+    edges = edges[edges["id"].isin(giant_ids)]
 
     # Export to parquet and shapefile
     edges_gdf = edges.reset_index(drop=True).set_crs(AADT_Serbia.crs)
