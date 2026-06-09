@@ -28,15 +28,6 @@ import seaborn as sns
 from scipy import stats
 from tqdm import tqdm
 
-# ArcGIS (optional)
-try:
-    import arcpy  # type: ignore
-
-    arcpy.env.overwriteOutput = True
-    ARCPY_AVAILABLE = True
-except ImportError:
-    ARCPY_AVAILABLE = False
-
 # Shapely
 import shapely
 from shapely.geometry import Point
@@ -263,11 +254,7 @@ class CriticalityConfig:
 
 
 def _log(message: str) -> None:
-    """Print or ArcGIS-AddMessage depending on environment."""
-    if ARCPY_AVAILABLE:
-        arcpy.AddMessage(message)
-    else:
-        print(message)
+    print(message)
 
 
 # ===========================================================================

@@ -45,14 +45,6 @@ from typing import Dict, List, Optional
 import contextily as cx
 import geopandas as gpd
 
-# try if arcpy is available
-try:
-    import arcpy  # type: ignore
-
-    ARCPY_AVAILABLE = True
-except ImportError:
-    ARCPY_AVAILABLE = False
-
 # Shapely-specific imports for spatial analysis
 
 # Matplotlib-specific imports for figures
@@ -85,15 +77,7 @@ class LocalConfig:
     # Output paths
     output_path = NetworkConfig.figure_path
 
-    # ArcGIS parameters
-    if ARCPY_AVAILABLE:
-        arcgis_input_layer: Optional[str] = None
-        arcgis_temp_base: Path = field(
-            default_factory=lambda: Path(r"C:\Temp\arcgis_tmp")
-        )
-    else:
-        # If no arcpyinput
-        gis_input_layer = NetworkConfig.Original_road_network
+    gis_input_layer = NetworkConfig.Original_road_network
 
     # OSM configuration
     osm_keys: List[str] = field(
@@ -442,39 +426,6 @@ def load_serbian_network(config: LocalConfig) -> gpd.GeoDataFrame:
     return gdf
 
 
-def load_serbian_network_arcpy(config: LocalConfig) -> gpd.GeoDataFrame:
-    """
-    Load Serbian road network from ArcGIS layer.
-
-    Args:
-        config: Network configuration
-
-    Returns:
-        GeoDataFrame with Serbian road network
-    """
-    print("Successfully loaded road network from file.")
-    input_layer = config.arcgis_input_layer or arcpy.GetParameterAsText(0)
-
-    # Setup temporary GDB
-    config.arcgis_temp_base.mkdir(parents=True, exist_ok=True)
-    gdb_path = config.arcgis_temp_base / "temp.gdb"
-
-    if not arcpy.Exists(str(gdb_path)):
-        arcpy.management.CreateFileGDB(str(config.arcgis_temp_base), "temp.gdb")
-
-    out_fc_name = "roads"
-    out_fc = gdb_path / out_fc_name
-
-    # Copy input layer to GDB
-    arcpy.management.CopyFeatures(input_layer, str(out_fc))
-
-    # Read into GeoDataFrame
-    gdf = gpd.read_file(str(gdb_path), layer=out_fc_name)
-    arcpy.AddMessage("Successfully loaded feature layer.")
-
-    return gdf
-
-
 def plot_serbian_network(gdf: gpd.GeoDataFrame, config: LocalConfig) -> None:
     """
     Create and save Serbian road network visualization.
@@ -819,25 +770,9 @@ def main():
     print("Creating OSM network plot...")
     plot_osm_network(base_network_filtered, config)
 
-    # Load and plot Serbian network (requires ArcGIS)
+    # Load and plot Serbian network
     print("Loading Serbian network...")
-
-    gdf = None
-    if ARCPY_AVAILABLE:
-        try:
-            print("ArcGIS detected.")
-            gdf = load_serbian_network_arcpy(config)
-        except Exception as e:
-            print(f"Error loading Serbian network with ArcGIS: {e}")
-
-    elif ARCPY_AVAILABLE is False:
-        try:
-            print(
-                "ArcGIS not available, attempting to load Serbian network from file..."
-            )
-            gdf = load_serbian_network(config)
-        except Exception as e:
-            print(f"Error loading Serbian network from file: {e}")
+    gdf = load_serbian_network(config)
 
     if gdf is not None:
         print("Creating Serbian network plot...")
