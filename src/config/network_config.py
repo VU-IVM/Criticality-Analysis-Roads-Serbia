@@ -11,6 +11,14 @@ class NetworkConfig:
 
     data_path = BASE_DIR / "input_files"
     intermediate_results_path = BASE_DIR / "intermediate_results"
+    # Intermediate results are stored side by side as Parquet and ArcGIS File
+    # Geodatabase, each under a dedicated subfolder. Step-3 (local accessibility)
+    # outputs go to the 'local_accessibility' subfolder of each.
+    parquet_path = intermediate_results_path / "parquet"
+    database_path = intermediate_results_path / "database"
+    local_accessibility_parquet = parquet_path / "local_accessibility"
+    local_accessibility_database = database_path / "local_accessibility"
+    local_accessibility_gdb = local_accessibility_database / "local_accessibility.gdb"
     results_path = BASE_DIR / "results"
     arcgis_results = results_path / "ArcGIS layers"
     arcgis_gpgk = arcgis_results / "Geopackages"
@@ -69,17 +77,18 @@ class NetworkConfig:
     #network criticality (single point of failure analysis) (produced in 2). Also saved to results folder.
     Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
 
-    # baseline accessibility results
-    Path_firefighter_accessibilty = intermediate_results_path / 'firefighter_accessibility_results.parquet'
-    Path_firefighters_sink = intermediate_results_path / 'firefighters.parquet'
-    Path_hospital_accessibilty = intermediate_results_path / 'hospital_accessibility_results.parquet'
-    Path_hospital_sink = intermediate_results_path / 'hospitals.parquet'
-    Path_police_accessibilty = intermediate_results_path / 'police_accessibility_results.parquet'
-    Path_police_sink = intermediate_results_path / 'police.parquet'
-    Path_factory_accessibility = intermediate_results_path / 'factory_accessibility.parquet'
-    Path_factory_sink = intermediate_results_path / 'factories_sinks.parquet'
-    Path_agriculture_accessibility = intermediate_results_path / 'agriculture_accessibility.parquet'
-    Path_agriculture_sink = intermediate_results_path / 'agriculture_sinks.parquet'
+    # baseline accessibility results (Parquet; matching .gdb layers live in
+    # local_accessibility_gdb with the same stem as the parquet file)
+    Path_firefighter_accessibilty = local_accessibility_parquet / 'firefighter_accessibility_results.parquet'
+    Path_firefighters_sink = local_accessibility_parquet / 'firefighters.parquet'
+    Path_hospital_accessibilty = local_accessibility_parquet / 'hospital_accessibility_results.parquet'
+    Path_hospital_sink = local_accessibility_parquet / 'hospitals.parquet'
+    Path_police_accessibilty = local_accessibility_parquet / 'police_accessibility_results.parquet'
+    Path_police_sink = local_accessibility_parquet / 'police.parquet'
+    Path_factory_accessibility = local_accessibility_parquet / 'factory_accessibility.parquet'
+    Path_factory_sink = local_accessibility_parquet / 'factories_sinks.parquet'
+    Path_agriculture_accessibility = local_accessibility_parquet / 'agriculture_accessibility.parquet'
+    Path_agriculture_sink = local_accessibility_parquet / 'agriculture_sinks.parquet'
 
     # hazards under climate change (produced in 4b)
     Path_future_floods_change_RP = intermediate_results_path / "Future Floods change in RP.parquet"
@@ -126,6 +135,9 @@ class NetworkConfig:
     show_figures = True #Flag to set whether plots will be shown in a pop up window or not
     print_statistics = True #prints summary of the analysis to the console
 
+    # CRS in which all vector outputs are written (MGI 1901 / Balkans zone 7)
+    output_crs = "EPSG:6316"
+
 
     #####################################################
     # Make sure all folders exist
@@ -135,6 +147,8 @@ class NetworkConfig:
         for path in [
             self.data_path,
             self.intermediate_results_path,
+            self.local_accessibility_parquet,
+            self.local_accessibility_database,
             self.results_path,
             self.arcgis_results,
             self.arcgis_gpgk,
