@@ -215,11 +215,11 @@ class CriticalityConfig:
         default_factory=lambda: [10_000, 25_000, 50_000, 100_000, 250_000, np.inf]
     )
     tkl_labels: List[str] = field(
-        default_factory=lambda: ["5K-25K", "25K-50K", "50K-100K", "100K-250K", "250K+"]
+        default_factory=lambda: ["10K-25K", "25K-50K", "50K-100K", "100K-250K", "250K+"]
     )
     tkl_linewidths: Dict[str, float] = field(
         default_factory=lambda: {
-            "10-25K": 0.5,
+            "10K-25K": 0.5,
             "25K-50K": 1.5,
             "50K-100K": 2.0,
             "100K-250K": 2.5,
