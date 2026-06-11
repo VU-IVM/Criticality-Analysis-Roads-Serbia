@@ -21,34 +21,37 @@ Outputs
 -------
 - intermediate_results/PERS_directed_final.parquet   Primary output: directed network
   with AADT, speed, and free-flow travel time.  Used by all downstream scripts.
-- intermediate_results/PERS_directed_final.shp/.gpkg  Same in shapefile / GeoPackage.
-- intermediate_results/PERS_dropped_features.parquet  Roads excluded from the giant
-  component (written only when > 5% of total length is dropped).
+- intermediate_results/giant_component_dropped_roads.parquet  Roads excluded by the
+  giant component filter (always written, for inspection).
+- figures/{traffic_type}_aadt_map.png  Individual AADT map per traffic type (6 files).
 - figures/AADT_categories_combined.png  Six-panel AADT map by vehicle category.
 - figures/giant_component_dropped_roads.png  Included vs. excluded roads map
   (written only when > 5% of total length is dropped).
 
 Key Processing Steps
 --------------------
-1. Load & deduplicate — read road network parquet; drop exact duplicate features.
+1. Load & filter — read road network parquet; retain relevant attribute columns.
 2. Iterative snapping — snap road endpoints within 2 m of nearby endpoints or
-   segments (up to 20 iterations); round coordinates to a 1 cm grid so touching
-   nodes become bit-identical.
+   segments (up to 20 iterations).
 3. Topology build (pass 1) — add endpoints, split edges at shared nodes
    (``split_edges_at_nodes``), assign node and edge IDs.
 4. AADT merge — join traffic counts by ``oznaka_deo`` (attribute match first, then
    spatial intersection with >= 50% overlap); fill remaining gaps via neighbour
    interpolation (pass 1) and road-category median with neighbour cap (pass 2).
 5. Kosovo filter — remove all segments intersecting the Kosovo boundary polygon.
-6. Topology build (pass 2) — re-apply 1 cm precision rounding; rebuild topology;
-   merge near-coincident nodes (union-find, 0.1 m tolerance).
-7. Directed network — halve AADT on bidirectional roads (originals are the
+6. Visualise AADT — save per-traffic-type maps and combined 6-panel figure.
+7. Topology build (pass 2) — rebuild endpoints, IDs, and topology on the
+   Kosovo-filtered network.
+8. Directed network — halve AADT on bidirectional roads (originals are the
    two-direction sum); add reversed edges for all non-oneway roads
    (``smer_gdf1`` not in {L, D}).
-8. Speed & travel time — assign speed limits by ``kategorija``; compute
+9. Speed & travel time — assign speed limits by ``kategorija``; compute
    ``road_length`` (km) and ``fft`` (free-flow travel time in hours).
-9. Giant component check — extract weakly-connected giant component; reconnect
-   topology-error roads within 2 m of main network; assert >= 95% length retained.
+   Any NaN/inf fft values are flagged with a diagnostic report — no automatic
+   correction is applied.
+10. Giant component check — extract strongly-connected giant component; report
+    dropped edges by count and length; assert >= 95% length retained; save
+    dropped roads to parquet for inspection.
 """
 
 # Standard library
@@ -59,6 +62,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # Third-party - Data and scientific computing
+import contextily as cx
 import geopandas as gpd
 import igraph as ig
 import numpy as np
@@ -310,20 +314,6 @@ def load_network(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     # Select relevant attributes
     attributes = config.road_attributes + ["geometry"]
     gdf = gdf[attributes]
-
-    # Check and remove exact duplicates (including geometry)
-    total_rows = len(gdf)
-    duplicate_mask = gdf.duplicated(keep=False)
-    unique_duplicated = gdf[duplicate_mask].drop_duplicates().shape[0]
-    total_duplicates = duplicate_mask.sum()
-
-    gdf = gdf.drop_duplicates()
-    gdf = gdf.reset_index(drop=True)
-
-    print(f"  Total rows before deduplication         : {total_rows}")
-    print(f"  Unique rows that have a duplicate       : {unique_duplicated}")
-    print(f"  Total rows involved in duplication      : {total_duplicates}")
-    print(f"  Total rows after deduplication          : {len(gdf)}")
 
     return gdf
 
@@ -915,6 +905,14 @@ def plot_aadt_categories_combined(
                     ax=ax, color=config.traffic_colors[i], alpha=0.7, linewidth=width
                 )
 
+        cx.add_basemap(
+            ax=ax,
+            crs=gdf_aadt.crs.to_string(),
+            source=cx.providers.OpenStreetMap.Mapnik,
+            alpha=0.3,
+            attribution=False,
+        )
+
         # Create legend with line widths
         legend_elements = [
             Line2D(
@@ -1016,6 +1014,13 @@ def plot_total_aadt_map(
                 label=category,
             )
 
+    cx.add_basemap(
+        ax=ax,
+        crs=gdf_aadt.crs.to_string(),
+        source=cx.providers.OpenStreetMap.Mapnik,
+        alpha=0.3,
+        attribution=False,
+    )
     ax.legend(title=config.get_legend_title(traffic_type), loc="upper right")
     ax.axis("off")
     plt.savefig(
@@ -1025,6 +1030,58 @@ def plot_total_aadt_map(
     )
     if NetworkConfig.show_figures:
         plt.show()
+
+
+def plot_individual_aadt_maps(
+    gdf_aadt: gpd.GeoDataFrame, config: NetworkPrepConfig
+) -> None:
+    """
+    Save one map per traffic type (6 types, excluding total_aadt).
+
+    Args:
+        gdf_aadt: Network with AADT data (columns already renamed to English names)
+        config: Network configuration
+    """
+    traffic_types = [t for t in config.traffic_types if t != "total_aadt"]
+
+    for i, traffic_type in enumerate(traffic_types):
+        breaks, labels = config.breaks_labels[traffic_type]
+        width_mapping = config.get_width_mapping(traffic_type)
+
+        gdf_aadt[f"{traffic_type}_category"] = pd.cut(
+            gdf_aadt[traffic_type], bins=breaks, labels=labels, include_lowest=True
+        )
+
+        fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+
+        for category in labels:
+            subset = gdf_aadt[gdf_aadt[f"{traffic_type}_category"] == category]
+            if len(subset) > 0:
+                width = width_mapping[category]
+                subset.plot(
+                    ax=ax,
+                    color=config.traffic_colors[i],
+                    alpha=0.7,
+                    linewidth=width,
+                    label=category,
+                )
+
+        cx.add_basemap(
+            ax=ax,
+            crs=gdf_aadt.crs.to_string(),
+            source=cx.providers.OpenStreetMap.Mapnik,
+            alpha=0.3,
+            attribution=False,
+        )
+        ax.legend(title=config.get_legend_title(traffic_type), loc="upper right")
+        ax.axis("off")
+        plt.savefig(
+            config.figures_path / f"{traffic_type}_aadt_map.png",
+            dpi=config.figure_dpi,
+            bbox_inches="tight",
+        )
+        if NetworkConfig.show_figures:
+            plt.show()
 
 
 def create_directed_network(
@@ -1094,12 +1151,15 @@ def create_directed_network(
 
     bad_mask = ~np.isfinite(base_network["fft"])
     if bad_mask.any():
-        print(f"WARNING: {bad_mask.sum()} edge(s) with NaN/inf fft — applying fallback (80 km/h, min 1 m road length)")
-        base_network.loc[bad_mask, "road_length"] = (
-            base_network.loc[bad_mask].geometry.length / 1e3
-        ).clip(lower=0.001)
-        base_network.loc[bad_mask, "speed"] = config.default_speed
-        base_network.loc[bad_mask, "fft"] = base_network.loc[bad_mask, "road_length"] / config.default_speed
+        raw_geom_m = base_network.loc[bad_mask].geometry.length
+        detail_cols = [c for c in ["oznaka_deo", "kategorija", "stanje", "duzina_deo"] if c in base_network.columns]
+        report = base_network.loc[bad_mask, detail_cols].copy()
+        report["geom_length_m"] = raw_geom_m.values
+        report["road_length_km"] = base_network.loc[bad_mask, "road_length"].values
+        report["fft"] = base_network.loc[bad_mask, "fft"].values
+        print(f"WARNING: {bad_mask.sum()} edge(s) with NaN/inf fft — inspect before proceeding:")
+        print(report.to_string())
+        print("  ^^^ Compare geom_length_m against duzina_deo to diagnose the source of the NaN geometry.")
     else:
         print("fft check: all edges have valid fft values.")
 
@@ -1128,16 +1188,56 @@ def create_igraph_and_export(
     graph = ig.Graph.TupleList(
         edges.itertuples(index=False), edge_attrs=list(edges.columns)[2:], directed=True
     )
-    graph = graph.connected_components().giant()
-    edges = edges[edges["id"].isin(graph.es["id"])]
 
-    # Export to parquet and shapefile
-    edges_gdf = edges.reset_index(drop=True).set_crs(AADT_Serbia.crs)
+    # Giant component check — 95% length threshold
+    giant = graph.connected_components().giant()
+    giant_ids = set(giant.es["id"])
+    dropped_mask = ~edges["id"].isin(giant_ids)
+    giant_edges = edges[~dropped_mask]
+    dropped_edges = edges[dropped_mask]
+
+    total_length = base_network["road_length"].sum()
+    dropped_length = base_network.loc[dropped_mask, "road_length"].sum()
+    retained_pct = 100 * (1 - dropped_length / total_length) if total_length > 0 else 100.0
+
+    print(f"\nGiant component: {len(giant_edges)} edges retained, {len(dropped_edges)} dropped")
+    print(f"  Total length    : {total_length:.1f} km")
+    print(f"  Dropped length  : {dropped_length:.1f} km")
+    print(f"  Retained        : {retained_pct:.2f}%")
+
+    # Save dropped roads for inspection
+    dropped_gdf = base_network.loc[dropped_mask].reset_index(drop=True).set_crs(AADT_Serbia.crs)
+    dropped_gdf.to_parquet(config.output_path / "giant_component_dropped_roads.parquet")
+    print(f"  Saved {len(dropped_gdf)} dropped roads to giant_component_dropped_roads.parquet")
+
+    if retained_pct < 95.0:
+        print(f"\n⚠ Only {retained_pct:.2f}% of road length retained — producing diagnostic map")
+        fig, ax = plt.subplots(figsize=(14, 10))
+        giant_gdf = base_network.loc[~dropped_mask].set_crs(AADT_Serbia.crs)
+        giant_gdf_wm = giant_gdf.to_crs(epsg=3857)
+        dropped_gdf_wm = dropped_gdf.to_crs(epsg=3857)
+        giant_gdf_wm.plot(ax=ax, color="blue", linewidth=0.8, alpha=0.7, label="Giant component")
+        dropped_gdf_wm.plot(ax=ax, color="red", linewidth=1.5, alpha=0.9, label="Dropped")
+        try:
+            cx.add_basemap(ax, crs=giant_gdf_wm.crs, source=cx.providers.CartoDB.Positron)
+        except Exception:
+            pass
+        ax.legend()
+        ax.set_title(f"Giant component: {retained_pct:.2f}% retained")
+        ax.axis("off")
+        plt.savefig(config.figures_path / "giant_component_dropped_roads.png", dpi=config.figure_dpi, bbox_inches="tight")
+        if NetworkConfig.show_figures:
+            plt.show()
+
+    assert retained_pct >= 95.0, (
+        f"Giant component retained only {retained_pct:.2f}% of road length "
+        f"(threshold: 95%). Check giant_component_dropped_roads.parquet for dropped segments."
+    )
+
+    # Export to parquet
+    edges_gdf = giant_edges.reset_index(drop=True).set_crs(AADT_Serbia.crs)
     edges_gdf.to_parquet(config.output_path / "PERS_directed_final.parquet")
-    edges_gdf.to_file(config.output_path / "PERS_directed_final.shp")
-    edges_gdf.to_file(config.output_path / "PERS_directed_final.gpkg")
-
-    print(f"Directed graph saved to {(config.output_path / 'PERS_directed_final.shp').resolve()}")
+    print(f"Directed graph saved to {(config.output_path / 'PERS_directed_final.parquet').resolve()}")
 
 
 def main():
@@ -1176,18 +1276,21 @@ def main():
     AADT_Serbia = filter_by_country(AADT_connected, config)
 
     # Step 8: Create visualizations
-    print("Step 8: Creating AADT category visualizations...")
+    print("Step 8: Creating individual AADT maps (6 traffic types)...")
+    plot_individual_aadt_maps(AADT_Serbia, config)
+
+    print("Step 9: Creating combined AADT category map...")
     plot_aadt_categories_combined(AADT_Serbia, config)
 
-    print("Step 9: Creating total AADT map...")
+    print("Step 10: Creating total AADT map on original AADT network...")
     plot_total_aadt_map(aadt_network, config)
 
-    # Step 10: Create directed network
-    print("Step 10: Creating directed network...")
+    # Step 11: Create directed network
+    print("Step 11: Creating directed network...")
     base_network = create_directed_network(AADT_Serbia, config)
 
-    # Step 11: Create igraph and export
-    print("Step 11: Creating igraph and exporting...")
+    # Step 12: Create igraph and export
+    print("Step 12: Creating igraph and exporting...")
     create_igraph_and_export(base_network, AADT_Serbia, config)
 
     print("Network preparation completed successfully!")
