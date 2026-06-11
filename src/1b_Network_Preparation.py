@@ -1143,6 +1143,17 @@ def create_directed_network(
     base_network["speed"] = base_network.apply(lambda x: fill_speed(x), axis=1)
     base_network["fft"] = base_network.apply(lambda x: x.road_length / x.speed, axis=1)
 
+    bad_mask = ~np.isfinite(base_network["fft"])
+    if bad_mask.any():
+        print(f"WARNING: {bad_mask.sum()} edge(s) with NaN/inf fft — applying fallback (80 km/h, min 1 m road length)")
+        base_network.loc[bad_mask, "road_length"] = (
+            base_network.loc[bad_mask].geometry.length / 1e3
+        ).clip(lower=0.001)
+        base_network.loc[bad_mask, "speed"] = config.default_speed
+        base_network.loc[bad_mask, "fft"] = base_network.loc[bad_mask, "road_length"] / config.default_speed
+    else:
+        print("fft check: all edges have valid fft values.")
+
     return base_network
 
 
