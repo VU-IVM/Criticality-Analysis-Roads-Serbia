@@ -19,6 +19,10 @@ class NetworkConfig:
     local_accessibility_parquet = parquet_path / "local_accessibility"
     local_accessibility_database = database_path / "local_accessibility"
     local_accessibility_gdb = local_accessibility_database / "local_accessibility.gdb"
+    # Step-4 (hazard exposure) outputs go to the 'hazard_exposure' subfolder of each.
+    hazard_exposure_parquet = parquet_path / "hazard_exposure"
+    hazard_exposure_database = database_path / "hazard_exposure"
+    hazard_exposure_gdb = hazard_exposure_database / "hazard_exposure.gdb"
     results_path = BASE_DIR / "results"
     arcgis_results = results_path / "ArcGIS layers"
     arcgis_gpgk = arcgis_results / "Geopackages"
@@ -90,15 +94,22 @@ class NetworkConfig:
     Path_agriculture_accessibility = local_accessibility_parquet / 'agriculture_accessibility.parquet'
     Path_agriculture_sink = local_accessibility_parquet / 'agriculture_sinks.parquet'
 
+    # hazard point-in-time outputs (produced in 4a)
+    flood_depth_roads = hazard_exposure_parquet / "flood_depth_roads.parquet"
+    wildfire_risk_roads = hazard_exposure_parquet / "wildfire_risk_roads.parquet"
+
     # hazards under climate change (produced in 4b)
-    Path_future_floods_change_RP = intermediate_results_path / "Future Floods change in RP.parquet"
-    Path_future_flooding_roads = intermediate_results_path / "Future Floods change in RP experienced by roads.parquet"
-    Path_precipitation_change_rcp_8_5_far_future = intermediate_results_path / 'change in maximum daily precipitation rcp 85 period 2.parquet'
+    Path_future_floods_change_RP = hazard_exposure_parquet / "Future Floods change in RP.parquet"
+    Path_future_flooding_roads = hazard_exposure_parquet / "Future Floods change in RP experienced by roads.parquet"
+    Path_precipitation_change_rcp_45_period_1 = hazard_exposure_parquet / "change in maximum daily precipitation rcp 45 period 1.parquet"
+    Path_precipitation_change_rcp_45_period_2 = hazard_exposure_parquet / "change in maximum daily precipitation rcp 45 period 2.parquet"
+    Path_precipitation_change_rcp_85_period_1 = hazard_exposure_parquet / "change in maximum daily precipitation rcp 85 period 1.parquet"
+    Path_precipitation_change_rcp_8_5_far_future = hazard_exposure_parquet / "change in maximum daily precipitation rcp 85 period 2.parquet"
 
     # heat data and impacts (produced in 4c)
     Future_pavement_temperatures = intermediate_results_path / "future_pavement_temperatures.tif"
-    roads_current_max_pavement_temperature = intermediate_results_path / "roads_current_max_pavement_temperatures.parquet"
-    roads_future_max_pavement_temperature = intermediate_results_path / "roads_future_max_pavement_temperatures.parquet"
+    roads_current_max_pavement_temperature = hazard_exposure_parquet / "roads_current_max_pavement_temperatures.parquet"
+    roads_future_max_pavement_temperature = hazard_exposure_parquet / "roads_future_max_pavement_temperatures.parquet"
    
     # combined list of all roads that are exposed to at least one hazard, its intensity and the criticality
     # of each road (produced in 5a)
@@ -149,6 +160,8 @@ class NetworkConfig:
             self.intermediate_results_path,
             self.local_accessibility_parquet,
             self.local_accessibility_database,
+            self.hazard_exposure_parquet,
+            self.hazard_exposure_database,
             self.results_path,
             self.arcgis_results,
             self.arcgis_gpgk,
