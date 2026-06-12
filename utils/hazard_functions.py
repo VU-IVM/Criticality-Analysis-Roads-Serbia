@@ -480,8 +480,14 @@ def plot_wildfire_roads_AB(
 
     roads_mercator = roads_with_risk.to_crs(3857)
 
-    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 10), facecolor="white")
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.95, bottom=0.05, wspace=0.0)
+    # Common extent (Serbia + Kosovo road network) so both panels align tightly
+    bounds_3857 = gpd.GeoSeries(
+        pd.concat([serbia_roads_mercator.geometry, kosovo_roads_mercator.geometry]), crs=3857
+    ).total_bounds
+    figsize = _grid_figsize(bounds_3857, n_rows=1, n_cols=2, panel_height=9.0)
+
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=figsize, facecolor="white")
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.98, bottom=0.02, wspace=0.02)
 
     # Panel A — raster
     ax_a = axes[0]
@@ -492,17 +498,6 @@ def plot_wildfire_roads_AB(
     )
     serbia_roads_mercator.plot(ax=ax_a, color="black", linewidth=0.8, alpha=0.5, zorder=3)
     kosovo_roads_mercator.plot(ax=ax_a, color="grey", linewidth=0.8, alpha=0.5, zorder=3)
-    cx.add_basemap(ax=ax_a, source=cx.providers.CartoDB.Positron, attribution=False)
-    ax_a.set_aspect("equal")
-    ax_a.axis("off")
-    ax_a.legend(
-        handles=[
-            Line2D([0], [0], color="black", linewidth=1, label="Road Network", alpha=0.6),
-            Patch(facecolor="#d7191c", edgecolor="none", label="Wildfire susceptibility"),
-        ],
-        loc="upper right", fontsize=10, frameon=True, fancybox=True, shadow=True,
-        framealpha=0.9, facecolor="white", edgecolor="#cccccc",
-    )
 
     # Panel B — roads
     ax_b = axes[1]
@@ -511,9 +506,21 @@ def plot_wildfire_roads_AB(
     exposed = roads_mercator[roads_mercator["wildfire_risk"] == 1]
     if not exposed.empty:
         exposed.plot(ax=ax_b, color="#d7191c", linewidth=1.0, alpha=0.85, zorder=3)
-    cx.add_basemap(ax=ax_b, source=cx.providers.CartoDB.Positron, attribution=False)
-    ax_b.set_aspect("equal")
-    ax_b.axis("off")
+
+    _set_common_extent(axes, bounds_3857)
+    for ax in axes:
+        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, attribution=False)
+        ax.set_aspect("equal")
+        ax.axis("off")
+
+    ax_a.legend(
+        handles=[
+            Line2D([0], [0], color="black", linewidth=1, label="Road Network", alpha=0.6),
+            Patch(facecolor="#d7191c", edgecolor="none", label="Wildfire susceptibility"),
+        ],
+        loc="upper right", fontsize=10, frameon=True, fancybox=True, shadow=True,
+        framealpha=0.9, facecolor="white", edgecolor="#cccccc",
+    )
     ax_b.legend(
         handles=[
             Line2D([0], [0], color="black", linewidth=1, label="Road Network", alpha=0.6),
@@ -686,8 +693,11 @@ def plot_future_flood_basins(
     color_dict = {**dict(zip(bin_labels, colors)), "No data": "white"}
 
     basins_3857 = basins_3035.to_crs(epsg=3857)
+    bounds_3857 = basins_3857.total_bounds
 
-    fig, axes = plt.subplots(2, 2, figsize=(10, 14.5))
+    figw, figh = _grid_figsize(bounds_3857, n_rows=2, n_cols=2, panel_height=6.5)
+    fig, axes = plt.subplots(2, 2, figsize=(figw, figh + 1.0))
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.96, bottom=0.07, wspace=0.02, hspace=0.06)
     axes_flat = axes.flatten()
 
     for i, scenario in enumerate(scenarios):
@@ -698,9 +708,12 @@ def plot_future_flood_basins(
         plot_col = basins_3857[f"rp{scenario}_bin"].astype(str)
         plot_col[plot_col == "nan"] = "No data"
         basins_3857.plot(color=plot_col.map(color_dict), edgecolor="black", linewidth=0.5, ax=axes_flat[i])
-        cx.add_basemap(ax=axes_flat[i], source=cx.providers.CartoDB.Positron, alpha=1.0, attribution=False)
         axes_flat[i].set_title(f"Future warming scenario: {scenario_labels[scenario]}°C", fontsize=14)
-        axes_flat[i].set_axis_off()
+
+    _set_common_extent(axes, bounds_3857)
+    for ax in axes_flat:
+        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=1.0, attribution=False)
+        ax.set_axis_off()
 
     handles = [
         __import__("matplotlib").patches.Patch(facecolor=color_dict[lbl], edgecolor="black", label=lbl)
@@ -718,7 +731,6 @@ def plot_future_flood_basins(
                 fontsize=16, fontweight="bold", verticalalignment="top",
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
-    plt.tight_layout(rect=[0, 0.03, 1, 1])
     plt.savefig(Path(figure_path) / "Change in return period.png", dpi=dpi, bbox_inches="tight")
     plt.show()
 
@@ -742,8 +754,13 @@ def plot_future_flood_roads(
     color_dict = {**dict(zip(bin_labels, colors)), "No data": "white"}
 
     roads_rp = roads_rp_3035.to_crs(epsg=3857)
+    bounds_3857 = gpd.GeoSeries(
+        pd.concat([roads_rp.geometry, kosovo_roads_mercator.geometry]), crs=3857
+    ).total_bounds
 
-    fig, axes = plt.subplots(2, 2, figsize=(10, 14.5))
+    figw, figh = _grid_figsize(bounds_3857, n_rows=2, n_cols=2, panel_height=6.5)
+    fig, axes = plt.subplots(2, 2, figsize=(figw, figh + 1.0))
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.96, bottom=0.07, wspace=0.02, hspace=0.06)
     axes_flat = axes.flatten()
 
     for i, scenario in enumerate(scenarios):
@@ -751,9 +768,12 @@ def plot_future_flood_roads(
         plot_col[plot_col == "nan"] = "No data"
         roads_rp.plot(color=plot_col.map(color_dict), edgecolor="black", linewidth=1.2, ax=axes_flat[i])
         kosovo_roads_mercator.plot(ax=axes_flat[i], color="grey", linewidth=0.8, alpha=0.5, zorder=2)
-        cx.add_basemap(ax=axes_flat[i], source=cx.providers.CartoDB.Positron, alpha=1.0, attribution=False)
         axes_flat[i].set_title(f"Future warming scenario: {scenario_labels[scenario]}°C", fontsize=14)
-        axes_flat[i].set_axis_off()
+
+    _set_common_extent(axes, bounds_3857)
+    for ax in axes_flat:
+        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=1.0, attribution=False)
+        ax.set_axis_off()
 
     handles = [
         __import__("matplotlib").patches.Patch(facecolor=color_dict[lbl], edgecolor="black", label=lbl)
@@ -771,7 +791,6 @@ def plot_future_flood_roads(
                 fontsize=16, fontweight="bold", verticalalignment="top",
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
-    plt.tight_layout(rect=[0, 0.03, 1, 1])
     plt.savefig(Path(figure_path) / "Change in return period experienced by roads.png", dpi=dpi, bbox_inches="tight")
     plt.show()
 
@@ -888,16 +907,21 @@ def plot_precipitation_change(
 
     rcps = ["45", "85"]
     periods = ["1", "2"]
+    rcps_title = ["4.5", "8.5"]
+    periods_title = ["2031 - 2060", "2071 - 2100"]
 
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(6.5, 9.2), sharex=True, sharey=True)
-    fig.subplots_adjust(left=0.06, right=0.98, top=0.98, bottom=0.10, wspace=0.02, hspace=0.02)
+    # Road geometry is identical across panels → one common extent for all
+    sample = results["45"]["1"]
+    bounds_3857 = gpd.GeoSeries(
+        pd.concat([
+            sample["roads_with_agreement"].to_crs(3857).geometry,
+            sample["no_agreement"].to_crs(3857).geometry,
+        ]), crs=3857,
+    ).total_bounds
 
-    axes_flat = axes.flatten()
-    axes_sorted = sorted(axes_flat[:4], key=lambda ax: (-ax.get_position().y0, ax.get_position().x0))
-    for i, ax in enumerate(axes_sorted):
-        ax.text(0.05, 0.95, string.ascii_uppercase[i], transform=ax.transAxes,
-                fontsize=14, fontweight="bold", verticalalignment="top",
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    figw, figh = _grid_figsize(bounds_3857, n_rows=2, n_cols=2, panel_height=6.0)
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(figw, figh + 0.8), sharex=True, sharey=True)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.95, bottom=0.10, wspace=0.02, hspace=0.02)
 
     for row, period in enumerate(periods):
         for col, rcp in enumerate(rcps):
@@ -906,26 +930,30 @@ def plot_precipitation_change(
             results[rcp][period]["roads_with_agreement"].to_crs(epsg=3857).plot(
                 ax=ax, column="max_rx1day_pct", norm=norm, cmap=cmap, linewidth=1.2, legend=False,
             )
-            cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
-            ax.set_axis_off()
 
-    rcps_title = ["4.5", "8.5"]
-    periods_title = ["2031 - 2060", "2071 - 2100"]
+    _set_common_extent(axes, bounds_3857)
+    for ax in axes.flat:
+        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
+        ax.set_axis_off()
+
+    # Panel labels (A–D) and axis-relative RCP (column) / period (row) headings
+    axes_flat = axes.flatten()
+    for i, ax in enumerate(axes_flat):
+        ax.text(0.05, 0.95, string.ascii_uppercase[i], transform=ax.transAxes,
+                fontsize=14, fontweight="bold", verticalalignment="top",
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
     for col, rcp in enumerate(rcps_title):
-        x = 0.25 if col == 0 else 0.75
-        fig.text(x, 0.98, f"RCP {rcp}", ha="center", va="bottom", fontsize=14, fontweight="bold")
+        axes[0, col].set_title(f"RCP {rcp}", fontsize=14, fontweight="bold")
     for row, period in enumerate(periods_title):
-        y = 0.73 if row == 0 else 0.28
-        fig.text(0.02, y, period, ha="left", va="center", fontsize=12, rotation=90, fontweight="bold")
+        axes[row, 0].text(-0.04, 0.5, period, transform=axes[row, 0].transAxes,
+                          ha="right", va="center", fontsize=12, rotation=90, fontweight="bold")
 
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
-    cax = fig.add_axes([0.25, 0.06, 0.5, 0.025])
+    cax = fig.add_axes([0.25, 0.06, 0.5, 0.02])
     cbar = fig.colorbar(sm, cax=cax, orientation="horizontal")
     cbar.set_label("Change (%)")
     cbar.set_ticks(bins)
-    for ax in axes.flat:
-        ax.margins(0)
 
     plt.savefig(Path(figure_path) / "change in Rx1d.png", dpi=dpi, bbox_inches="tight")
     plt.show()
@@ -996,8 +1024,13 @@ def mask_to_serbia(
     bounds,
     crs,
     serbia_gdf: gpd.GeoDataFrame,
+    all_touched: bool = False,
 ) -> np.ndarray:
-    """Return *data* with pixels outside Serbia set to NaN."""
+    """Return *data* with pixels outside Serbia set to NaN.
+
+    With ``all_touched=True`` any pixel overlapping Serbia even partly is kept
+    (otherwise only pixels whose centre falls inside Serbia are kept).
+    """
     from rasterio.transform import from_bounds as _from_bounds
 
     serbia_proj = serbia_gdf.to_crs(crs)
@@ -1006,10 +1039,39 @@ def mask_to_serbia(
     outside = geometry_mask(
         [mapping(geom) for geom in serbia_proj.geometry],
         out_shape=(rows, cols), transform=transform, invert=False,
+        all_touched=all_touched,
     )
     masked = data.copy()
     masked[outside] = np.nan
     return masked
+
+
+# ---------------------------------------------------------------------------
+# Multi-panel layout helpers — eliminate empty space between equal-aspect maps
+# ---------------------------------------------------------------------------
+
+def _grid_figsize(bounds_3857, n_rows: int, n_cols: int, panel_height: float = 6.0) -> tuple[float, float]:
+    """Figure size whose per-panel aspect matches the map extent (Web Mercator).
+
+    Sizing the figure to the data aspect lets each equal-aspect map fill its
+    axes box, so adjacent panels touch instead of floating in whitespace.
+    """
+    minx, miny, maxx, maxy = bounds_3857
+    dx, dy = (maxx - minx), (maxy - miny)
+    aspect = (dx / dy) if dy else 1.0
+    return (n_cols * panel_height * aspect, n_rows * panel_height)
+
+
+def _set_common_extent(axes, bounds_3857, pad: float = 0.02) -> None:
+    """Clip every axis to the same padded extent so maps align edge-to-edge.
+
+    Call *before* ``cx.add_basemap`` so the basemap is fetched for this extent.
+    """
+    minx, miny, maxx, maxy = bounds_3857
+    dx, dy = (maxx - minx) * pad, (maxy - miny) * pad
+    for ax in np.atleast_1d(axes).ravel():
+        ax.set_xlim(minx - dx, maxx + dx)
+        ax.set_ylim(miny - dy, maxy + dy)
 
 
 def plot_temperature_difference(
@@ -1200,6 +1262,30 @@ def apply_urban_heat_island(
     return data_uhi
 
 
+def assign_max_temp_to_roads(
+    roads: gpd.GeoDataFrame,
+    raster_data: np.ndarray,
+    raster_bounds,
+    raster_crs,
+) -> gpd.GeoDataFrame:
+    """Add a ``max_temp`` column with the max raster value per road segment."""
+    rows, cols = raster_data.shape
+    raster_transform = transform_from_bounds(
+        raster_bounds.left, raster_bounds.bottom, raster_bounds.right, raster_bounds.top, cols, rows
+    )
+    with MemoryFile() as memfile:
+        with memfile.open(
+            driver="GTiff", height=rows, width=cols, count=1,
+            dtype=raster_data.dtype, crs=raster_crs, transform=raster_transform,
+        ) as dataset:
+            dataset.write(raster_data, 1)
+        stats = zonal_stats(roads, memfile.name, stats=["max"], nodata=np.nan, all_touched=True)
+
+    roads = roads.copy()
+    roads["max_temp"] = [s["max"] for s in stats]
+    return roads
+
+
 def assign_and_plot_road_temperatures(
     raster_data: np.ndarray,
     raster_bounds,
@@ -1216,21 +1302,7 @@ def assign_and_plot_road_temperatures(
     from utils.arcgis import save_lyrx_layer
 
     roads = gpd.read_parquet(input_parquet).to_crs(raster_crs)
-
-    rows, cols = raster_data.shape
-    raster_transform = transform_from_bounds(
-        raster_bounds.left, raster_bounds.bottom, raster_bounds.right, raster_bounds.top, cols, rows
-    )
-
-    with MemoryFile() as memfile:
-        with memfile.open(
-            driver="GTiff", height=rows, width=cols, count=1,
-            dtype=raster_data.dtype, crs=raster_crs, transform=raster_transform,
-        ) as dataset:
-            dataset.write(raster_data, 1)
-        stats = zonal_stats(roads, memfile.name, stats=["max"], nodata=np.nan, all_touched=True)
-
-    roads["max_temp"] = [s["max"] for s in stats]
+    roads = assign_max_temp_to_roads(roads, raster_data, raster_bounds, raster_crs)
 
     n_missing = roads["max_temp"].isna().sum()
     print(f"Roads with temperature assigned: {(~roads['max_temp'].isna()).sum():,}")
@@ -1282,4 +1354,87 @@ def assign_and_plot_road_temperatures(
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_folder / f"{stem}.png", dpi=dpi, bbox_inches="tight")
+    plt.show()
+
+
+def plot_pavement_temperature_roads_AB(
+    raster_data: np.ndarray,
+    raster_bounds,
+    raster_crs,
+    input_parquet: Path,
+    serbia_3857: gpd.GeoDataFrame,
+    kosovo_roads_mercator: gpd.GeoDataFrame,
+    output_folder: Path,
+    dpi: int = 300,
+) -> None:
+    """Two-panel A/B figure: UHI pavement-temperature raster (A) and the road
+    network coloured by the same temperatures (B). No title, no Serbia outline.
+
+    Panel A shows only heat pixels overlapping Serbia (partial overlap kept);
+    Panel B adds the Kosovo road network in grey.
+    """
+    cmap = ListedColormap(ABS_COLORS_PAV)
+    norm = BoundaryNorm(ABS_BINS_PAV, cmap.N)
+
+    # Panel A — UHI raster, masked to Serbia (keep pixels partly overlapping)
+    data_serbia = mask_to_serbia(raster_data, raster_bounds, raster_crs, serbia_3857, all_touched=True)
+    l, b, r, t = _reproject_bounds_to_3857(raster_bounds, raster_crs)
+
+    # Panel B — roads coloured by the same (UHI) temperatures
+    roads = gpd.read_parquet(input_parquet).to_crs(raster_crs)
+    roads = assign_max_temp_to_roads(roads, raster_data, raster_bounds, raster_crs)
+    roads_plot = roads.to_crs(epsg=3857)
+
+    # Common extent (Serbia + Kosovo roads) so both panels align edge-to-edge
+    # without whitespace while keeping the Kosovo network visible in panel B.
+    serbia_geom = serbia_3857.to_crs(3857).geometry
+    bounds_3857 = gpd.GeoSeries(
+        pd.concat([serbia_geom, kosovo_roads_mercator.geometry]), crs=3857
+    ).total_bounds
+
+    # Size the figure so each map fills its axes box exactly (no horizontal gap):
+    # reserve the colorbar strip as extra inches rather than shrinking the panels.
+    minx, miny, maxx, maxy = bounds_3857
+    map_aspect = (maxx - minx) / (maxy - miny)
+    panel_h = 8.0
+    cb_inches = 0.9
+    figw, figh = 2 * panel_h * map_aspect, panel_h + cb_inches
+
+    fig, axes = plt.subplots(1, 2, figsize=(figw, figh), facecolor="white")
+    fig.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=cb_inches / figh, wspace=0.02)
+
+    ax_a, ax_b = axes
+    ax_a.imshow(data_serbia, extent=[l, r, b, t], origin="upper", cmap=cmap, norm=norm,
+                interpolation="nearest", alpha=0.85, zorder=3)
+
+    kosovo_roads_mercator.plot(ax=ax_b, color="grey", linewidth=0.8, alpha=0.5, zorder=2)
+    roads_no_temp = roads_plot[roads_plot["max_temp"].isna()]
+    if len(roads_no_temp) > 0:
+        roads_no_temp.plot(ax=ax_b, color="grey", linewidth=0.4, alpha=0.5, zorder=3)
+    roads_plot[~roads_plot["max_temp"].isna()].plot(
+        ax=ax_b, column="max_temp", cmap=cmap, norm=norm, linewidth=1.2, zorder=4
+    )
+
+    _set_common_extent(axes, bounds_3857)
+    for ax in axes:
+        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
+        ax.set_aspect("equal")
+        ax.axis("off")
+
+    # A/B labels on top of everything (roads must not cover them)
+    for ax, label in zip(axes, ["A", "B"]):
+        ax.text(0.05, 0.95, label, transform=ax.transAxes, fontsize=16, fontweight="bold",
+                verticalalignment="top", zorder=10,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm); sm.set_array([])
+    cax = fig.add_axes([0.30, 0.06, 0.40, 0.02])
+    cbar = fig.colorbar(sm, cax=cax, orientation="horizontal")
+    cbar.set_label("Pavement Temperature (°C)", fontsize=9)
+    cbar.set_ticks(ABS_BINS_PAV)
+    cbar.ax.set_xticklabels(["50", "53", "56", "59", "62", "64"], fontsize=8)
+
+    output_folder = Path(output_folder)
+    output_folder.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_folder / "pavement_temperature_roads_AB.png", dpi=dpi, bbox_inches="tight")
     plt.show()

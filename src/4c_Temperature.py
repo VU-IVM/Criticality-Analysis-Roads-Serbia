@@ -9,8 +9,11 @@ sys.path.append(str(NetworkConfig.BASE_DIR))
 from utils.hazard_functions import (
     apply_urban_heat_island,
     assign_and_plot_road_temperatures,
+    clip_roads_by_country,
+    load_country_boundaries,
     mask_to_serbia,
     plot_pavement_temperature,
+    plot_pavement_temperature_roads_AB,
     plot_temperature_difference,
     read_tif,
 )
@@ -26,6 +29,12 @@ def main():
     world = gpd.read_file(config.world_boundaries)
     country_plot = world.loc[world.SOV_A3 == "SRB"]
     serbia_3857 = country_plot.to_crs(3857)
+
+    # --- Kosovo road network (grey on the A/B road panel) ---
+    _, serbia, kosovo = load_country_boundaries(config.world_boundaries)
+    baseline_roads = gpd.read_file(config.data_path / "Deonice_Februar_2025.shp")
+    _, kosovo_roads = clip_roads_by_country(baseline_roads, serbia, kosovo)
+    kosovo_roads_mercator = kosovo_roads.to_crs(3857)
 
     # --- Temperature difference plot (historic vs current air temp) ---
     plot_temperature_difference(
@@ -81,6 +90,18 @@ def main():
         output_folder=config.temperature_figures_folder,
         title="Road Network — Pavement Temperature with UHI",
         output_crs=config.output_crs,
+    )
+
+    # --- Combined A/B figure: UHI raster + road network at UHI temperatures ---
+    plot_pavement_temperature_roads_AB(
+        raster_data=data_uhi,
+        raster_bounds=bounds,
+        raster_crs=crs,
+        input_parquet=config.Path_processed_road_network,
+        serbia_3857=serbia_3857,
+        kosovo_roads_mercator=kosovo_roads_mercator,
+        output_folder=config.temperature_figures_folder,
+        dpi=300,
     )
 
 
