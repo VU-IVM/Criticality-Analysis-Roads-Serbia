@@ -1220,13 +1220,15 @@ def create_igraph_and_export(
     print(f"  Dropped length  : {dropped_length:.1f} km")
     print(f"  Retained        : {retained_pct:.2f}%")
 
-    # Save dropped roads for inspection
-    dropped_gdf = base_network.loc[dropped_mask].reset_index(drop=True).set_crs(AADT_Serbia.crs)
-    dropped_gdf.to_parquet(config.output_path / "giant_component_dropped_roads.parquet")
-    print(f"  Saved {len(dropped_gdf)} dropped roads to giant_component_dropped_roads.parquet")
-
     if retained_pct < 95.0:
+
         print(f"\n⚠ Only {retained_pct:.2f}% of road length retained — producing diagnostic map")
+
+        # Save dropped roads for inspection
+        dropped_gdf = base_network.loc[dropped_mask].reset_index(drop=True).set_crs(AADT_Serbia.crs)
+        dropped_gdf.to_parquet(config.output_path / "giant_component_dropped_roads.parquet")
+        print(f"  Saved {len(dropped_gdf)} dropped roads to giant_component_dropped_roads.parquet")
+
         fig, ax = plt.subplots(figsize=(14, 10))
         giant_gdf = base_network.loc[~dropped_mask].set_crs(AADT_Serbia.crs)
         giant_gdf_wm = giant_gdf.to_crs(epsg=3857)
