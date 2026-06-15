@@ -38,6 +38,21 @@ from scipy.ndimage import zoom
 from shapely.geometry import mapping
 
 
+def _show_or_close(show_figures: bool) -> None:
+    """Display the current figure when *show_figures* is True, else close it.
+
+    The caller always saves the figure to disk beforehand; this only controls
+    the interactive pop-up. The 4a/4b/4c scripts pass ``config.show_figures``
+    (the single toggle in ``src/config/network_config.py``) so a batch run can
+    suppress every figure; the notebooks rely on each plotting function's
+    default ``show_figures=True`` so plots always render inline.
+    """
+    if show_figures:
+        plt.show()
+    else:
+        plt.close()
+
+
 # ---------------------------------------------------------------------------
 # Generic save helper (mirrors _save_vector in accessibility_functions.py)
 # ---------------------------------------------------------------------------
@@ -148,6 +163,7 @@ def plot_flood_depth_map(
     hazard_country: xr.Dataset,
     figure_path: Path,
     dpi: int = 600,
+    show_figures: bool = True,
 ) -> None:
     """Plot flood depth raster with CartoDB.Positron basemap and save to *figure_path*."""
     flood_colors = ["#f7fbff", "#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#084594"]
@@ -179,7 +195,7 @@ def plot_flood_depth_map(
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.88)
     plt.savefig(Path(figure_path) / "flood_depth_map.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_flood_depth_roads(
@@ -191,6 +207,7 @@ def plot_flood_depth_roads(
     arcgis_results: Path | None = None,
     output_crs: str = "EPSG:6316",
     dpi: int = 600,
+    show_figures: bool = True,
 ) -> None:
     """Plot roads coloured by flood class; save figure + vector to parquet+GDB."""
     from utils.arcgis import save_lyrx_layer
@@ -217,7 +234,7 @@ def plot_flood_depth_roads(
 
     plt.tight_layout()
     plt.savefig(Path(figure_path) / "flood_depth_roads.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
     save_hazard_vector(roads, parquet_dir, gdb_path, "flood_depth_roads", output_crs)
 
@@ -242,6 +259,7 @@ def plot_snowdrift_map(
     kosovo_roads_mercator: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 600,
+    show_figures: bool = True,
 ) -> None:
     """Plot snow-drift segments classified by length; Serbia roads black, Kosovo grey."""
     snow_drift = gpd.read_file(snow_drift_path)
@@ -285,7 +303,7 @@ def plot_snowdrift_map(
     )
     plt.tight_layout()
     plt.savefig(Path(figure_path) / "snow_drift_map.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_landslides_map(
@@ -294,6 +312,7 @@ def plot_landslides_map(
     kosovo_roads_mercator: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 600,
+    show_figures: bool = True,
 ) -> None:
     """Plot landslides (tip=='Klizište' only) classified by year."""
     landslides = gpd.read_file(landslide_path)
@@ -342,7 +361,7 @@ def plot_landslides_map(
     )
     plt.tight_layout()
     plt.savefig(Path(figure_path) / "landslides_map_by_year.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def assign_wildfire_risk_to_roads(
@@ -403,6 +422,7 @@ def plot_wildfire_raster_map(
     kosovo_roads_mercator: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 600,
+    show_figures: bool = True,
 ) -> None:
     """Plot binary wildfire risk raster (any value > 0 = risk)."""
     with rasterio.open(wildfire_path) as src:
@@ -442,7 +462,7 @@ def plot_wildfire_raster_map(
               frameon=True, fancybox=True, shadow=True, framealpha=0.9, facecolor="white", edgecolor="#cccccc")
     plt.tight_layout()
     plt.savefig(Path(figure_path) / "binary_wildfire_risk_map.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_wildfire_roads_AB(
@@ -457,6 +477,7 @@ def plot_wildfire_roads_AB(
     arcgis_results: Path | None = None,
     output_crs: str = "EPSG:6316",
     dpi: int = 600,
+    show_figures: bool = True,
 ) -> None:
     """Two-panel A/B figure: wildfire raster (A) and roads exposed to wildfire (B)."""
     from utils.arcgis import save_lyrx_layer
@@ -535,7 +556,7 @@ def plot_wildfire_roads_AB(
                 verticalalignment="top", bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
     plt.savefig(Path(figure_path) / "wildfire_risk_AB.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
     save_hazard_vector(roads_with_risk, parquet_dir, gdb_path, "wildfire_risk_roads", output_crs)
 
@@ -560,6 +581,7 @@ def plot_landslide_susceptibility_map(
     kosovo_roads_mercator: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 600,
+    show_figures: bool = True,
 ) -> None:
     """Plot landslide susceptibility raster (discrete classes 2/4/6/8/10)."""
     with rasterio.open(landslide_susceptibility_path) as src:
@@ -613,7 +635,7 @@ def plot_landslide_susceptibility_map(
     )
     plt.tight_layout()
     plt.savefig(Path(figure_path) / "landslide_susceptibility_map.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 # ---------------------------------------------------------------------------
@@ -685,6 +707,7 @@ def plot_future_flood_basins(
     gdb_path: Path,
     output_crs: str = "EPSG:6316",
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Plot 2×2 basin return-period maps and save results."""
     bins = [10, 25, 50, 100, 150, np.inf]
@@ -732,7 +755,7 @@ def plot_future_flood_basins(
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
     plt.savefig(Path(figure_path) / "Change in return period.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
     save_hazard_vector(basins_3857, parquet_dir, gdb_path, "Future Floods change in RP", output_crs)
 
@@ -747,6 +770,7 @@ def plot_future_flood_roads(
     gdb_path: Path,
     output_crs: str = "EPSG:6316",
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Plot 2×2 road return-period maps and save results."""
     bin_labels = ["10-25", "25-50", "50-100", "100-150", "150+"]
@@ -792,7 +816,7 @@ def plot_future_flood_roads(
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
     plt.savefig(Path(figure_path) / "Change in return period experienced by roads.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
     save_hazard_vector(roads_rp, parquet_dir, gdb_path, "Future Floods change in RP experienced by roads", output_crs)
 
@@ -895,6 +919,7 @@ def plot_precipitation_change(
     results: dict,
     figure_path: Path,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Plot 2×2 precipitation-change road maps."""
     bins = [-10, -5, -2, 0, 2, 5, 10, 15, 20, 25]
@@ -956,7 +981,7 @@ def plot_precipitation_change(
     cbar.set_ticks(bins)
 
     plt.savefig(Path(figure_path) / "change in Rx1d.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 # ---------------------------------------------------------------------------
@@ -1080,6 +1105,7 @@ def plot_temperature_difference(
     serbia_3857: gpd.GeoDataFrame,
     output_folder: Path,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Three-panel historic/current/difference temperature figure."""
     hist_stem = os.path.splitext(os.path.basename(historic_path))[0]
@@ -1139,7 +1165,7 @@ def plot_temperature_difference(
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_folder / f"diff_{hist_stem}_vs_{curr_stem}.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_pavement_temperature(
@@ -1150,6 +1176,7 @@ def plot_pavement_temperature(
     crs,
     serbia_3857: gpd.GeoDataFrame,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Single-panel pavement temperature map."""
     l, b, r, t = _reproject_bounds_to_3857(bounds, crs)
@@ -1189,7 +1216,7 @@ def plot_pavement_temperature(
     output_folder.mkdir(parents=True, exist_ok=True)
     stem = title.lower().replace(" ", "_")
     fig.savefig(output_folder / f"{stem}.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def apply_urban_heat_island(
@@ -1297,6 +1324,7 @@ def assign_and_plot_road_temperatures(
     title: str | None = None,
     output_crs: str = "EPSG:6316",
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Assign max temperature from raster to each road segment; save parquet+GDB+figure."""
     from utils.arcgis import save_lyrx_layer
@@ -1354,7 +1382,7 @@ def assign_and_plot_road_temperatures(
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_folder / f"{stem}.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_pavement_temperature_roads_AB(
@@ -1366,6 +1394,7 @@ def plot_pavement_temperature_roads_AB(
     kosovo_roads_mercator: gpd.GeoDataFrame,
     output_folder: Path,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Two-panel A/B figure: UHI pavement-temperature raster (A) and the road
     network coloured by the same temperatures (B). No title, no Serbia outline.
@@ -1437,4 +1466,4 @@ def plot_pavement_temperature_roads_AB(
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_folder / "pavement_temperature_roads_AB.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)

@@ -40,6 +40,7 @@ def main():
     plot_temperature_difference(
         config.historic_temperature, config.current_temperature, serbia_3857,
         config.temperature_figures_folder, dpi=300,
+        show_figures=config.show_figures,
     )
 
     # --- Current pavement temperature ---
@@ -50,8 +51,8 @@ def main():
     valid = data_serbia[~np.isnan(data_serbia)]
     print(f"Pavement temp range: {valid.min():.2f} – {valid.max():.2f} °C")
 
-    plot_pavement_temperature(data, "Pavement Temperature", config.temperature_figures_folder, bounds, crs, serbia_3857)
-    plot_pavement_temperature(data + 2, "Pavement Temperature (+ 2°C)", config.temperature_figures_folder, bounds, crs, serbia_3857)
+    plot_pavement_temperature(data, "Pavement Temperature", config.temperature_figures_folder, bounds, crs, serbia_3857, show_figures=config.show_figures)
+    plot_pavement_temperature(data + 2, "Pavement Temperature (+ 2°C)", config.temperature_figures_folder, bounds, crs, serbia_3857, show_figures=config.show_figures)
 
     # --- Urban heat island adjustment ---
     data_uhi = apply_urban_heat_island(
@@ -65,6 +66,7 @@ def main():
         "Pavement Temperature with urban heat islands under climate change",
         config.temperature_figures_folder,
         bounds, crs, serbia_3857,
+        show_figures=config.show_figures,
     )
 
     # --- Assign temperatures to road segments and save ---
@@ -78,6 +80,7 @@ def main():
         output_folder=config.temperature_figures_folder,
         title="Road Network — Pavement Temperature",
         output_crs=config.output_crs,
+        show_figures=config.show_figures,
     )
 
     assign_and_plot_road_temperatures(
@@ -90,6 +93,7 @@ def main():
         output_folder=config.temperature_figures_folder,
         title="Road Network — Pavement Temperature with UHI",
         output_crs=config.output_crs,
+        show_figures=config.show_figures,
     )
 
     # --- Combined A/B figure: UHI raster + road network at UHI temperatures ---
@@ -102,6 +106,7 @@ def main():
         kosovo_roads_mercator=kosovo_roads_mercator,
         output_folder=config.temperature_figures_folder,
         dpi=300,
+        show_figures=config.show_figures,
     )
 
 

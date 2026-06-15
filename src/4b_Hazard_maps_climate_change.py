@@ -63,6 +63,7 @@ def main():
         gdb_path=config.hazard_exposure_gdb,
         output_crs=config.output_crs,
         dpi=300,
+        show_figures=config.show_figures,
     )
 
     plot_future_flood_roads(
@@ -75,6 +76,7 @@ def main():
         gdb_path=config.hazard_exposure_gdb,
         output_crs=config.output_crs,
         dpi=300,
+        show_figures=config.show_figures,
     )
 
     # --- Future precipitation change ---
@@ -87,7 +89,7 @@ def main():
         output_crs=config.output_crs,
     )
 
-    plot_precipitation_change(results, config.figure_path, dpi=300)
+    plot_precipitation_change(results, config.figure_path, dpi=300, show_figures=config.show_figures)
 
 
 if __name__ == "__main__":
