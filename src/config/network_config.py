@@ -65,9 +65,16 @@ class NetworkConfig:
     Path_flood_statistics_per_basin = data_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
     wildfire_risk = data_path / "wildfire risk" / "stepen ugrozenosti od pozara Srbijasume.tif"
     historic_temperature = temperature_input_folder / "TX7D_1961-1990.tif"
-    current_temperature = temperature_input_folder / "TX7D_1991-2020.tif" 
+    current_temperature = temperature_input_folder / "TX7D_1991-2020.tif"
     current_max_pavement_temperature = temperature_input_folder / "TPAV_2021-2025.tif"
     degree_of_urbanization = data_path / "GHS_SMOD_E2025_GLOBE_R2023A_54009_1000_V2_0_R4_C20.tif"
+    # baseline road network sections and elevation data (used in 5a)
+    Path_baseline_road_network = data_path / "Deonice_Februar_2025.shp"
+    dem_serbia = data_path / "dem_serbia.tif"
+    Path_vertical_coordinates = (
+        data_path / "Vertical coordinates" / "RSDP_Feb_2026" / "RSDP_Feb_2026"
+        / "Deonice" / "RSDP_Deonice_Feb_2026.shp"
+    )
 
     
     #####################################################
@@ -111,18 +118,23 @@ class NetworkConfig:
     roads_current_max_pavement_temperature = hazard_exposure_parquet / "roads_current_max_pavement_temperatures.parquet"
     roads_future_max_pavement_temperature = hazard_exposure_parquet / "roads_future_max_pavement_temperatures.parquet"
    
-    # combined list of all roads that are exposed to at least one hazard, its intensity and the criticality
-    # of each road (produced in 5a)
-    Path_main_network_hazard_exposure = intermediate_results_path / "main_network_hazard_exposure.parquet"
+    # flood statistics per basin computed in 5b (input to 5c)
+    Path_flood_statistics_per_basin_scenarios = (
+        intermediate_results_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
+    )
 
-    # impacts of flooding on accessibility (produced in 5c)
-    Path_hospital_impacts = intermediate_results_path / 'hospital_impacts.parquet'
-    Path_factory_impacts = intermediate_results_path / 'factory_impacts.parquet'
-    Path_police_impacts = intermediate_results_path / 'police_impacts.parquet'
-    Path_fire_fighter_impacts = intermediate_results_path / 'fire_impacts.parquet'
-    Path_road_border_impacts = intermediate_results_path / 'road_impacts.parquet'
-    Path_port_impacts = intermediate_results_path / 'port_impacts.parquet'
-    Path_railway_impacts = intermediate_results_path / 'rail_impacts.parquet'
+    # combined list of all roads that are exposed to at least one hazard, its intensity and the criticality
+    # of each road (produced in 5a; parquet + GDB layer + Excel)
+    Path_main_network_hazard_exposure = hazard_exposure_parquet / "main_network_hazard_exposure.parquet"
+
+    # impacts of flooding on accessibility (produced in 5c; parquet + GDB layer + Excel each)
+    Path_hospital_impacts = local_accessibility_parquet / 'hospital_impacts.parquet'
+    Path_factory_impacts = local_accessibility_parquet / 'factory_impacts.parquet'
+    Path_police_impacts = local_accessibility_parquet / 'police_impacts.parquet'
+    Path_fire_fighter_impacts = local_accessibility_parquet / 'fire_impacts.parquet'
+    Path_road_border_impacts = local_accessibility_parquet / 'road_impacts.parquet'
+    Path_port_impacts = local_accessibility_parquet / 'port_impacts.parquet'
+    Path_railway_impacts = local_accessibility_parquet / 'rail_impacts.parquet'
 
     #final climate criticality ranking (produced in 5d, also saved as parquet and gpkg)
     Path_climate_criticality_results = results_path / 'Climate_Criticality_PuteviSrbije.xlsx'
