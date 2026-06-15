@@ -86,3 +86,8 @@ flowcharts/render_mermaid_flowcharts.sh
 flowcharts/1b_network_preparation.mmd
 
 old_version
+
+# -----------------------
+# Local-only helper scripts and notebooks (kept locally, not tracked)
+# -----------------------
+helper scripts and notebooks/
