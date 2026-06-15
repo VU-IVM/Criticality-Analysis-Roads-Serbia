@@ -30,7 +30,8 @@ Outputs
 
 Key Processing Steps
 --------------------
-1. Load & filter — read road network parquet; retain relevant attribute columns.
+1. Load & deduplicate — read road network parquet; retain relevant attribute
+   columns; drop exact duplicate features.
 2. Iterative snapping — snap road endpoints within 2 m of nearby endpoints or
    segments (up to 20 iterations).
 3. Topology build (pass 1) — add endpoints, split edges at shared nodes
@@ -314,6 +315,20 @@ def load_network(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     # Select relevant attributes
     attributes = config.road_attributes + ["geometry"]
     gdf = gdf[attributes]
+
+    # Check and remove exact duplicates (including geometry)
+    total_rows = len(gdf)
+    duplicate_mask = gdf.duplicated(keep=False)
+    unique_duplicated = gdf[duplicate_mask].drop_duplicates().shape[0]
+    total_duplicates = duplicate_mask.sum()
+
+    gdf = gdf.drop_duplicates()
+    gdf = gdf.reset_index(drop=True)
+
+    print(f"  Total rows before deduplication         : {total_rows}")
+    print(f"  Unique rows that have a duplicate       : {unique_duplicated}")
+    print(f"  Total rows involved in duplication      : {total_duplicates}")
+    print(f"  Total rows after deduplication          : {len(gdf)}")
 
     return gdf
 
