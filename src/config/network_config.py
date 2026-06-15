@@ -155,7 +155,7 @@ class NetworkConfig:
     ######################################################
     # Flags to activate/ deactivate outputs
     ######################################################
-    show_figures = True #Flag to set whether plots will be shown in a pop up window or not
+    show_figures = False #Flag to set whether plots will be shown in a pop up window or not
     print_statistics = True #prints summary of the analysis to the console
 
     # CRS in which all vector outputs are written (MGI 1901 / Balkans zone 7)
