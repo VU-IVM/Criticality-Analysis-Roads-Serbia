@@ -1257,7 +1257,6 @@ def create_igraph_and_export(
 
     # Export to parquet
     edges_gdf = giant_edges.reset_index(drop=True).set_crs(AADT_Serbia.crs)
-    config.network_parquet.mkdir(parents=True, exist_ok=True)
     edges_gdf.to_parquet(config.Path_processed_road_network)
     print(f"Directed graph saved to {config.Path_processed_road_network.resolve()}")
     save_gdb_layer(edges_gdf, config.network_gdb, "main_network_directed", config.output_crs)
