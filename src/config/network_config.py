@@ -162,6 +162,18 @@ class NetworkConfig:
     show_figures = False #Flag to set whether plots will be shown in a pop up window or not
     print_statistics = True #prints summary of the analysis to the console
 
+    # --- Combined climate criticality (5d) options ---
+    # climate_hazards_only: build the hazard-exposure sub-index (H) only from the
+    #   climate-change-driven hazards (projected extreme-rainfall change, maximum
+    #   pavement temperature, landslide exposure). If False, all mapped hazards are
+    #   also included (flood depth, snow drift, wildfire susceptibility).
+    climate_hazards_only = True
+    # normalize_subindices: min-max normalise the travel-disruption (T) and local-
+    #   accessibility (A) sub-indices to [0, 1] before combining them
+    #   multiplicatively with hazard exposure -> CC_norm = norm(H) x (norm(T) + norm(A)).
+    #   If False, the raw summed convex scores are combined -> CC_raw = H x (T + A).
+    normalize_subindices = True
+
     # CRS in which all vector outputs are written (MGI 1901 / Balkans zone 7)
     output_crs = "EPSG:6316"
 
