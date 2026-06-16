@@ -34,6 +34,7 @@ from utils.hazard_functions import (
     _grid_figsize,
     _set_common_extent,
     _show_or_close,
+    save_excel_mirror,
     save_hazard_vector,
 )
 
@@ -51,13 +52,12 @@ def save_criticality_vector(
     layer_name: str,
     output_crs: str = "EPSG:6316",
 ) -> None:
-    """Save *gdf* as parquet + GDB layer (via ``save_hazard_vector``) and as an
-    Excel attribute table (geometry column dropped) next to the parquet file."""
-    save_hazard_vector(gdf, parquet_dir, gdb_path, layer_name, output_crs)
+    """Save *gdf* as parquet + GDB layer + mirrored Excel attribute table.
 
-    excel_path = Path(parquet_dir) / f"{layer_name}.xlsx"
-    gdf.drop(columns=gdf.geometry.name).to_excel(excel_path, index=False)
-    print(f"Saved {layer_name} -> {excel_path}")
+    Thin wrapper over ``save_hazard_vector``, which also writes the companion
+    ``.xlsx`` under ``intermediate_results/excel/``.
+    """
+    save_hazard_vector(gdf, parquet_dir, gdb_path, layer_name, output_crs)
 
 
 # ===========================================================================
@@ -2125,5 +2125,6 @@ def save_climate_criticality_geospatial(
 
     gdf.to_parquet(parquet_path)
     print(f"Saved climate criticality -> {parquet_path}")
+    save_excel_mirror(gdf, parquet_path)
     gdf.to_crs(output_crs).to_file(gpkg_path, driver="GPKG")
     print(f"Saved climate criticality -> {gpkg_path} (CRS {output_crs})")

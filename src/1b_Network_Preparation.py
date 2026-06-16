@@ -99,7 +99,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.simplify import *
 
 from config.network_config import NetworkConfig
-from utils.hazard_functions import save_gdb_layer
+from utils.hazard_functions import save_excel_mirror, save_gdb_layer
 
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -1217,7 +1217,9 @@ def create_igraph_and_export(
 
         # Save dropped roads for inspection
         dropped_gdf = base_network.loc[dropped_mask].reset_index(drop=True).set_crs(AADT_Serbia.crs)
-        dropped_gdf.to_parquet(NetworkConfig.intermediate_results_path / "giant_component_dropped_roads.parquet")
+        dropped_roads_path = NetworkConfig.intermediate_results_path / "giant_component_dropped_roads.parquet"
+        dropped_gdf.to_parquet(dropped_roads_path)
+        save_excel_mirror(dropped_gdf, dropped_roads_path)
         print(f"  Saved {len(dropped_gdf)} dropped roads to giant_component_dropped_roads.parquet")
 
         fig, ax = plt.subplots(figsize=(14, 10))
@@ -1248,6 +1250,7 @@ def create_igraph_and_export(
     edges_gdf.to_parquet(NetworkConfig.Path_processed_road_network)
     print(f"Directed graph saved to {NetworkConfig.Path_processed_road_network.resolve()}")
     save_gdb_layer(edges_gdf, NetworkConfig.network_gdb, "main_network_directed", NetworkConfig.output_crs)
+    save_excel_mirror(edges_gdf, NetworkConfig.Path_processed_road_network)
 
 
 def main():

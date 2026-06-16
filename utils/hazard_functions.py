@@ -74,6 +74,41 @@ def _sanitize_for_gdb(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf
 
 
+def intermediate_excel_path(parquet_path: Path) -> Path:
+    """Mirror a parquet path into the ``excel`` tree as an ``.xlsx`` path.
+
+    ``intermediate_results/parquet/<sub>/<name>.parquet`` becomes
+    ``intermediate_results/excel/<sub>/<name>.xlsx``. Paths written directly to
+    the ``intermediate_results`` root are mirrored to ``excel/<name>.xlsx``.
+    """
+    parquet_path = Path(parquet_path)
+    parts = list(parquet_path.parts)
+    if "parquet" in parts:
+        parts[parts.index("parquet")] = "excel"
+    elif "intermediate_results" in parts:
+        parts.insert(parts.index("intermediate_results") + 1, "excel")
+    else:
+        parts.insert(len(parts) - 1, "excel")
+    return Path(*parts).with_suffix(".xlsx")
+
+
+def save_excel_mirror(gdf, parquet_path: Path) -> None:
+    """Write the attribute table of *gdf* as an Excel file mirroring *parquet_path*.
+
+    The geometry column is dropped. Used so every intermediate vector output has
+    a companion ``.xlsx`` under ``intermediate_results/excel/`` (see
+    :func:`intermediate_excel_path`).
+    """
+    excel_path = intermediate_excel_path(parquet_path)
+    excel_path.parent.mkdir(parents=True, exist_ok=True)
+    data = gdf
+    geom_name = getattr(gdf, "geometry", None)
+    if geom_name is not None and gdf.geometry.name in gdf.columns:
+        data = gdf.drop(columns=gdf.geometry.name)
+    data.to_excel(excel_path, index=False)
+    print(f"Saved Excel -> {excel_path}")
+
+
 def save_hazard_vector(
     gdf: gpd.GeoDataFrame,
     parquet_dir: Path,
@@ -81,7 +116,8 @@ def save_hazard_vector(
     layer_name: str,
     output_crs: str = "EPSG:6316",
 ) -> None:
-    """Save *gdf* to ``parquet_dir/<layer_name>.parquet`` and ``gdb_path`` layer.
+    """Save *gdf* to ``parquet_dir/<layer_name>.parquet``, the ``gdb_path`` layer,
+    and a mirrored Excel attribute table under ``intermediate_results/excel/``.
 
     If *layer_name* already exists in the GDB (e.g. from a prior run) the GDB
     is rebuilt — preserving all other layers — so there are no FID conflicts.
@@ -95,6 +131,7 @@ def save_hazard_vector(
     print(f"Saved {layer_name} -> {parquet_path}")
 
     save_gdb_layer(gdf, gdb_path, layer_name, output_crs)
+    save_excel_mirror(gdf_out, parquet_path)
 
 
 def save_gdb_layer(

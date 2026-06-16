@@ -13,6 +13,7 @@ This module performs Single Point of Failure (SPOF) analysis on the Serbian road
 """
 
 # Standard library
+import sys
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +38,9 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from config.network_config import NetworkConfig
+
+sys.path.append(str(NetworkConfig.BASE_DIR))
+from utils.hazard_functions import save_excel_mirror, save_gdb_layer
 
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -750,15 +754,24 @@ def save_criticality_results(
         "tkl",
     ]
     output_cols = [c for c in preferred_columns if c in gdf_results.columns]
-    #save parquet and gpkg to intermediate results
-    gdf_results[output_cols].to_parquet(NetworkConfig.Path_criticality_results)
-    gdf_results[output_cols].to_file(NetworkConfig.Path_criticality_results.with_suffix(".gpkg"), driver="GPKG")
+    results = gdf_results[output_cols]
 
-    #create results folder if not already existent
+    # Save to the 'travel_disruptions' subfolder: parquet (working CRS),
+    # GDB layer (EPSG:6316) and a mirrored Excel attribute table.
+    NetworkConfig.travel_disruptions_parquet.mkdir(parents=True, exist_ok=True)
+    results.to_parquet(NetworkConfig.Path_criticality_results)
+    save_gdb_layer(
+        results, NetworkConfig.travel_disruptions_gdb,
+        "criticality_results", NetworkConfig.output_crs,
+    )
+    save_excel_mirror(results, NetworkConfig.Path_criticality_results)
+
+    # Also save a GeoPackage copy to the results folder
     NetworkConfig.results_path.mkdir(parents=True, exist_ok=True)
-    
-    #save gpkg to results folder 
-    gdf_results[output_cols].to_file(NetworkConfig.results_path / NetworkConfig.Path_criticality_results.with_suffix(".gpkg").name, driver="GPKG")
+    results.to_file(
+        NetworkConfig.results_path / NetworkConfig.Path_criticality_results.with_suffix(".gpkg").name,
+        driver="GPKG",
+    )
 
     _log(f"Criticality results saved to {NetworkConfig.Path_criticality_results.resolve()}")
 

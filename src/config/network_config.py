@@ -27,6 +27,18 @@ class NetworkConfig:
     network_parquet = parquet_path / "network"
     network_database = database_path / "network"
     network_gdb = network_database / "network.gdb"
+    # Step-2 (single-point-of-failure travel disruption) outputs go to the
+    # 'travel_disruptions' subfolder of each.
+    travel_disruptions_parquet = parquet_path / "travel_disruptions"
+    travel_disruptions_database = database_path / "travel_disruptions"
+    travel_disruptions_gdb = travel_disruptions_database / "travel_disruptions.gdb"
+    # Every intermediate vector output is additionally mirrored as an Excel
+    # attribute table under 'excel', using the same subfolder structure.
+    excel_path = intermediate_results_path / "excel"
+    hazard_exposure_excel = excel_path / "hazard_exposure"
+    local_accessibility_excel = excel_path / "local_accessibility"
+    network_excel = excel_path / "network"
+    travel_disruptions_excel = excel_path / "travel_disruptions"
     results_path = BASE_DIR / "results"
     arcgis_results = results_path / "ArcGIS layers"
     arcgis_gpgk = arcgis_results / "Geopackages"
@@ -89,8 +101,9 @@ class NetworkConfig:
     Path_processed_road_network = network_parquet / "main_network_directed.parquet"
     Path_processed_road_network_shp = network_parquet / "main_network_directed.shp"
 
-    #network criticality (single point of failure analysis) (produced in 2). Also saved to results folder.
-    Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
+    #network criticality (single point of failure analysis) (produced in 2; parquet
+    # + GDB layer + Excel under 'travel_disruptions'). Also saved to results folder.
+    Path_criticality_results = travel_disruptions_parquet / "criticality_results.parquet"
 
     # baseline accessibility results (Parquet; matching .gdb layers live in
     # local_accessibility_gdb with the same stem as the parquet file)
@@ -192,6 +205,12 @@ class NetworkConfig:
             self.hazard_exposure_database,
             self.network_parquet,
             self.network_database,
+            self.travel_disruptions_parquet,
+            self.travel_disruptions_database,
+            self.hazard_exposure_excel,
+            self.local_accessibility_excel,
+            self.network_excel,
+            self.travel_disruptions_excel,
             self.results_path,
             self.arcgis_results,
             self.arcgis_gpgk,
