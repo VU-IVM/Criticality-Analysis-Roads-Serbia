@@ -29,7 +29,12 @@ from rasterstats import zonal_stats
 from scipy import stats as scipy_stats
 from tqdm import tqdm
 
-from utils.hazard_functions import _grid_figsize, _set_common_extent, save_hazard_vector
+from utils.hazard_functions import (
+    _grid_figsize,
+    _set_common_extent,
+    _show_or_close,
+    save_hazard_vector,
+)
 
 tqdm.pandas()
 
@@ -250,6 +255,7 @@ def plot_elevation_profiles(
     figure_path: Path,
     examples: dict[str, int] | None = None,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Plot example measured-Z vs DEM elevation profiles, one panel per category."""
     if examples is None:
@@ -281,7 +287,7 @@ def plot_elevation_profiles(
     axes[-1].set_xlabel("Distance along segment (km)", fontsize=13, fontweight="bold")
     plt.tight_layout()
     plt.savefig(Path(figure_path) / "elevation_profiles_by_category.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def compute_bias_statistics(vertical_coordinates: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -362,7 +368,7 @@ def compute_bias_confidence_intervals(clean: gpd.GeoDataFrame) -> pd.DataFrame:
     return ci_df
 
 
-def plot_elevation_bias(ci_df: pd.DataFrame, figure_path: Path, dpi: int = 300) -> None:
+def plot_elevation_bias(ci_df: pd.DataFrame, figure_path: Path, dpi: int = 300, show_figures: bool = True) -> None:
     """Plot median/mean elevation bias with 95% CIs per road category."""
     category_order = ["IM", "IA", "IB", "IIA", "IIB"]
     ci_df = ci_df.set_index("PutKateg").loc[category_order].reset_index()
@@ -388,7 +394,7 @@ def plot_elevation_bias(ci_df: pd.DataFrame, figure_path: Path, dpi: int = 300) 
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(Path(figure_path) / "elevation_bias_by_category.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 # Final elevation bias (m) per road category derived from the bootstrap analysis
@@ -428,6 +434,7 @@ def plot_flood_exposure_correction(
     country_plot: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Two-panel map: flood exposure before (A) and after (B) bias correction."""
     gdf_mercator = exposed_roads.to_crs(3857)
@@ -466,13 +473,14 @@ def plot_flood_exposure_correction(
                    facecolor="white", edgecolor="#cccccc")
 
     plt.savefig(Path(figure_path) / "flood_exposure_correction.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_vhl_flooded_map(
     gdf_vhl_flooded: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """Map of vehicle-hours-lost for flood-exposed roads (bias-corrected)."""
     bins = [0, 1000, 5000, 10000, 25000, np.inf]
@@ -501,7 +509,7 @@ def plot_vhl_flooded_map(
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
     plt.savefig(Path(figure_path) / "vehicle_hours_lost_map_flooded.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 # ---------------------------------------------------------------------------
@@ -658,6 +666,7 @@ def plot_hazard_comparison_grid(
     file_name: str,
     basemap_alpha: float = 1.0,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """2×2 hazard-comparison maps (A–D) for a disruption metric + legend strip.
 
@@ -713,7 +722,7 @@ def plot_hazard_comparison_grid(
                      edgecolor="#cccccc")
 
     plt.savefig(Path(figure_path) / file_name, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_all_hazard_comparisons(
@@ -724,6 +733,7 @@ def plot_all_hazard_comparisons(
     country_plot: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 300,
+    show_figures: bool = True,
 ) -> None:
     """VHL / PHL / TKL 2×2 hazard-comparison figures (Floods, Snow, Landslides, Wildfires)."""
     datasets = {
@@ -741,6 +751,7 @@ def plot_all_hazard_comparisons(
         legend_title="Vehicle Hours Lost", legend_unit="vehicle hours",
         country_plot=country_plot, figure_path=figure_path,
         file_name="vhl_hazards_comparison.png", basemap_alpha=0.4, dpi=dpi,
+        show_figures=show_figures,
     )
 
     plot_hazard_comparison_grid(
@@ -751,6 +762,7 @@ def plot_all_hazard_comparisons(
         legend_title="Passenger Hours Lost", legend_unit="hours",
         country_plot=country_plot, figure_path=figure_path,
         file_name="phl_hazards_comparison.png", basemap_alpha=1.0, dpi=dpi,
+        show_figures=show_figures,
     )
 
     plot_hazard_comparison_grid(
@@ -761,6 +773,7 @@ def plot_all_hazard_comparisons(
         legend_title="Tonnage Kilometers Lost", legend_unit="ton-km",
         country_plot=country_plot, figure_path=figure_path,
         file_name="tkl_hazards_comparison.png", basemap_alpha=1.0, dpi=dpi,
+        show_figures=show_figures,
     )
 
 
@@ -981,7 +994,7 @@ def load_basins(basins_csv_path: Path, basins_shapefile_path: Path) -> gpd.GeoDa
     return gpd.GeoDataFrame(basins.merge(all_basins, left_on="basinID", right_on="HYBAS_ID"))
 
 
-def plot_basin_water_depths(basins: gpd.GeoDataFrame, figure_path: Path, dpi: int = 300) -> None:
+def plot_basin_water_depths(basins: gpd.GeoDataFrame, figure_path: Path, dpi: int = 300, show_figures: bool = True) -> None:
     """Map of mean water depth per basin in five depth classes."""
     bins = [0, 1, 2, 3, 4, np.inf]
     labels = ["0-1m", "1-2m", "2-3m", "3-4m", "4m+"]
@@ -1015,7 +1028,7 @@ def plot_basin_water_depths(basins: gpd.GeoDataFrame, figure_path: Path, dpi: in
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
     plt.savefig(Path(figure_path) / "basin_water_depths.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def load_base_network(network_parquet_path: Path) -> gpd.GeoDataFrame:
@@ -1089,6 +1102,7 @@ def plot_service_criticality(
     figure_path: Path,
     file_name: str,
     dpi: int = 200,
+    show_figures: bool = True,
 ) -> None:
     """Single map of increased travel time for one service over the base network."""
     fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor="white")
@@ -1116,7 +1130,7 @@ def plot_service_criticality(
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
     plt.savefig(Path(figure_path) / file_name, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
     plt.close()
 
 
@@ -1227,6 +1241,7 @@ def plot_agri_criticality_3x1(
     file_name: str,
     legend_title: str,
     dpi: int = 150,
+    show_figures: bool = True,
 ) -> None:
     """3×1 figure: agriculture criticality for road borders (A), ports (B), rail (C)."""
     bounds_3857 = base_network.total_bounds
@@ -1247,7 +1262,7 @@ def plot_agri_criticality_3x1(
                title_fontsize=16, frameon=True, fancybox=True, framealpha=0.9)
 
     plt.savefig(Path(figure_path) / file_name, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def plot_criticality_2x2(
@@ -1258,6 +1273,7 @@ def plot_criticality_2x2(
     base_network: gpd.GeoDataFrame,
     figure_path: Path,
     dpi: int = 150,
+    show_figures: bool = True,
 ) -> None:
     """Combined 2×2 figure: hospitals (A), factories (B), police (C), fire (D)."""
     bounds_3857 = base_network.total_bounds
@@ -1280,7 +1296,7 @@ def plot_criticality_2x2(
                title_fontsize=12, frameon=True, fancybox=True, framealpha=0.9)
 
     plt.savefig(Path(figure_path) / "criticality_2x2.png", dpi=dpi, bbox_inches="tight")
-    plt.show()
+    _show_or_close(show_figures)
 
 
 def save_impact_layers(

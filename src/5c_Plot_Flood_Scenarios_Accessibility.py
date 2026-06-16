@@ -39,7 +39,7 @@ def main():
     basins = load_basins(
         config.Path_flood_statistics_per_basin_scenarios, config.basins_shapefile
     )
-    plot_basin_water_depths(basins, config.figure_path)
+    plot_basin_water_depths(basins, config.figure_path, show_figures=config.show_figures)
 
     # --- Base network (giant component, EPSG:3857) ---
     base_network = load_base_network(config.Path_RoadNetwork)
@@ -68,7 +68,7 @@ def main():
     for layer_name, (results_path, figure_name) in services.items():
         print(f"\n=== {layer_name} ===")
         exposed_edges = calculate_service_criticality(results_path, base_network)
-        plot_service_criticality(exposed_edges, base_network, config.figure_path, figure_name)
+        plot_service_criticality(exposed_edges, base_network, config.figure_path, figure_name, show_figures=config.show_figures)
         service_edges[layer_name] = exposed_edges
 
     # --- Agriculture: average and nearest-sink criticality per sink type ---
@@ -81,6 +81,7 @@ def main():
         agri_avg, base_network, config.figure_path,
         file_name="SRB_agri_criticality_avg_3x1.png",
         legend_title="Average Increased Travel Time",
+        show_figures=config.show_figures,
     )
 
     agri_nearest = calculate_agri_criticality(agri_results_path, base_network, delta_prefix="delta_nearest")
@@ -88,6 +89,7 @@ def main():
         agri_nearest, base_network, config.figure_path,
         file_name="SRB_agri_criticality_nearest_3x1.png",
         legend_title="Increased Travel Time To Nearest",
+        show_figures=config.show_figures,
     )
 
     # --- Combined 2x2 figure (hospitals, factories, police, fire) ---
@@ -95,6 +97,7 @@ def main():
         service_edges["hospital_impacts"], service_edges["factory_impacts"],
         service_edges["police_impacts"], service_edges["fire_impacts"],
         base_network, config.figure_path,
+        show_figures=config.show_figures,
     )
 
     # --- Save all impact layers (parquet + GDB + Excel, EPSG:6316) ---

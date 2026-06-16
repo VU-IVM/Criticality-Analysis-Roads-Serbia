@@ -65,15 +65,15 @@ def main():
     vertical_coordinates = extract_profiles(
         vertical_coordinates, vertical_coordinates_4326, config.dem_serbia
     )
-    plot_elevation_profiles(vertical_coordinates, config.figure_path)
+    plot_elevation_profiles(vertical_coordinates, config.figure_path, show_figures=config.show_figures)
 
     clean = compute_bias_statistics(vertical_coordinates)
     ci_df = compute_bias_confidence_intervals(clean)
-    plot_elevation_bias(ci_df, config.figure_path)
+    plot_elevation_bias(ci_df, config.figure_path, show_figures=config.show_figures)
 
     # --- Apply bias correction to flood depths ---
     exposed_roads = apply_bias_correction(exposed_roads)
-    plot_flood_exposure_correction(exposed_roads, country_plot, config.figure_path)
+    plot_flood_exposure_correction(exposed_roads, country_plot, config.figure_path, show_figures=config.show_figures)
 
     # --- Flood-exposed roads with VHL ---
     corrected_roads = exposed_roads.loc[exposed_roads.corrected_max_depth > 0]
@@ -82,7 +82,7 @@ def main():
         left_index=True,
         right_index=True,
     )
-    plot_vhl_flooded_map(gdf_vhl_flooded, config.figure_path)
+    plot_vhl_flooded_map(gdf_vhl_flooded, config.figure_path, show_figures=config.show_figures)
 
     # --- Other hazard overlays ---
     gdf_vhl_snowdrift = calculate_vhl_snowdrift(gdf_results, config.Path_snow_drift_data)
@@ -109,6 +109,7 @@ def main():
     plot_all_hazard_comparisons(
         gdf_vhl_flooded, gdf_vhl_snowdrift, gdf_vhl_landslides,
         gdf_vhl_wildfire, country_plot, config.figure_path,
+        show_figures=config.show_figures,
     )
 
     # --- Summary statistics ---
