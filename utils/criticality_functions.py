@@ -673,7 +673,10 @@ def plot_hazard_comparison_grid(
     ``datasets`` maps panel letter -> (title, GeoDataFrame); the metric in
     *column* is binned into *labels* and styled via *linewidth_map*.
     """
-    colors = ["#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"]
+    # Lightest tint (former lowest category) omitted: the four categories now
+    # use the upper four colours so the darkest/thickest styling stays on the
+    # open-ended top category.
+    colors = ["#fcae91", "#fb6a4a", "#de2d26", "#a50f15"]
     class_col = f"{column}_class"
 
     for _, (_, gdf) in datasets.items():
@@ -745,9 +748,9 @@ def plot_all_hazard_comparisons(
 
     plot_hazard_comparison_grid(
         datasets, column="vhl",
-        bins=[0, 1000, 5000, 10000, 25000, np.inf],
-        labels=["0-1K", "1K-5K", "5K-10K", "10K-25K", "25K+"],
-        linewidth_map={"0-1K": 1, "1K-5K": 1.5, "5K-10K": 2.0, "10K-25K": 3.5, "25K+": 5.0},
+        bins=[0, 1000, 5000, 10000, np.inf],
+        labels=["0-1K", "1K-5K", "5K-10K", "10K+"],
+        linewidth_map={"0-1K": 1.5, "1K-5K": 2.0, "5K-10K": 3.5, "10K+": 5.0},
         legend_title="Vehicle Hours Lost", legend_unit="vehicle hours",
         country_plot=country_plot, figure_path=figure_path,
         file_name="vhl_hazards_comparison.png", basemap_alpha=0.4, dpi=dpi,
@@ -756,9 +759,9 @@ def plot_all_hazard_comparisons(
 
     plot_hazard_comparison_grid(
         datasets, column="phl",
-        bins=[0, 1000, 5000, 10000, 25000, np.inf],
-        labels=["0-1K", "1K-5K", "5K-10K", "10K-25K", "25K+"],
-        linewidth_map={"0-1K": 1, "1K-5K": 1.5, "5K-10K": 2.0, "10K-25K": 2.5, "25K+": 3.0},
+        bins=[0, 1000, 5000, 10000, np.inf],
+        labels=["0-1K", "1K-5K", "5K-10K", "10K+"],
+        linewidth_map={"0-1K": 1.5, "1K-5K": 2.0, "5K-10K": 2.5, "10K+": 3.0},
         legend_title="Passenger Hours Lost", legend_unit="hours",
         country_plot=country_plot, figure_path=figure_path,
         file_name="phl_hazards_comparison.png", basemap_alpha=1.0, dpi=dpi,
@@ -767,9 +770,9 @@ def plot_all_hazard_comparisons(
 
     plot_hazard_comparison_grid(
         datasets, column="tkl",
-        bins=[10000, 25000, 50000, 100000, 250000, np.inf],
-        labels=["10K-25K", "25K-50K", "50K-100K", "100K-250K", "250K+"],
-        linewidth_map={"10K-25K": 0.5, "25K-50K": 1.5, "50K-100K": 2.0, "100K-250K": 2.5, "250K+": 3.0},
+        bins=[10000, 25000, 50000, 100000, np.inf],
+        labels=["10K-25K", "25K-50K", "50K-100K", "100K+"],
+        linewidth_map={"10K-25K": 1.5, "25K-50K": 2.0, "50K-100K": 2.5, "100K+": 3.0},
         legend_title="Tonnage Kilometers Lost", legend_unit="ton-km",
         country_plot=country_plot, figure_path=figure_path,
         file_name="tkl_hazards_comparison.png", basemap_alpha=1.0, dpi=dpi,
