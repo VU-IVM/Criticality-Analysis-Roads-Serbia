@@ -59,11 +59,12 @@ print(f"Project root set to: {PROJECT_ROOT}")
 
 @dataclass
 class CriticalityConfig:
-    """Configuration for the main-network criticality analysis."""
+    """Script-specific parameters for the main-network criticality analysis.
 
-    # Paths
-    intermediate_path: Path = NetworkConfig.intermediate_results_path
-    figures_path: Path = NetworkConfig.figure_path
+    Only tunables live here (demand model, percolation, styling). All filesystem
+    paths and global flags come from ``NetworkConfig`` directly so there is a
+    single source of truth for them across the workflow.
+    """
 
     # Demand-model parameters
     dist_decay: float = 1.0
@@ -232,20 +233,10 @@ class CriticalityConfig:
         default_factory=lambda: ["Belgrade", "Novi Sad", "", "...", "", "City X"]
     )
 
-    @property
-    def network_path(self) -> Path:
-        """Full path to directed network parquet file."""
-        return NetworkConfig.Path_processed_road_network
-
-    @property
-    def population_path(self) -> Path:
-        """Full path to population Excel file."""
-        return NetworkConfig.Path_SettlementData_Excel
-
     def __post_init__(self):
-        """Ensure output directories exist."""
-        self.intermediate_path.mkdir(parents=True, exist_ok=True)
-        self.figures_path.mkdir(parents=True, exist_ok=True)
+        """Ensure global output directories exist."""
+        NetworkConfig.intermediate_results_path.mkdir(parents=True, exist_ok=True)
+        NetworkConfig.figure_path.mkdir(parents=True, exist_ok=True)
 
 
 # ===========================================================================
@@ -274,7 +265,7 @@ def load_network_and_graph(
     Returns:
         Tuple of (edge GeoDataFrame, directed igraph Graph).
     """
-    edges = gpd.read_parquet(config.network_path)
+    edges = gpd.read_parquet(NetworkConfig.Path_processed_road_network)
     graph = ig.Graph.TupleList(
         edges.itertuples(index=False),
         edge_attrs=list(edges.columns)[2:],
@@ -293,7 +284,7 @@ def load_population_data(config: CriticalityConfig) -> gpd.GeoDataFrame:
     Returns:
         GeoDataFrame with 'population' column and WGS-84 point geometry.
     """
-    excel_path = str(config.population_path)
+    excel_path = str(NetworkConfig.Path_SettlementData_Excel)
     df = pd.read_excel(excel_path)
     _log(f"Loaded population file: {excel_path}")
 
@@ -951,7 +942,7 @@ def plot_spof_disruption_maps(
 
     plt.tight_layout()
     plt.savefig(
-        config.figures_path / "SPOF_results_2x2.png",
+        NetworkConfig.figure_path / "SPOF_results_2x2.png",
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
@@ -1025,7 +1016,7 @@ def plot_spof_person_maps(
 
     plt.tight_layout()
     plt.savefig(
-        config.figures_path / "SPOF_PHL_THL_PKL_TKL.png",
+        NetworkConfig.figure_path / "SPOF_PHL_THL_PKL_TKL.png",
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
@@ -1079,7 +1070,7 @@ def plot_road_type_boxplots(
     plt.suptitle("")
     plt.tight_layout()
     plt.savefig(
-        config.figures_path / "SPOF_by_road_type_boxplot.png",
+        NetworkConfig.figure_path / "SPOF_by_road_type_boxplot.png",
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
@@ -1129,7 +1120,7 @@ def plot_road_type_violins(
 
     plt.tight_layout()
     plt.savefig(
-        config.figures_path / "SPOF_by_road_type_violin.png",
+        NetworkConfig.figure_path / "SPOF_by_road_type_violin.png",
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
@@ -1193,7 +1184,7 @@ def plot_aadt_vs_criticality(
 
     plt.tight_layout()
     plt.savefig(
-        config.figures_path / "SPOF_AADT_vs_criticality.png",
+        NetworkConfig.figure_path / "SPOF_AADT_vs_criticality.png",
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )

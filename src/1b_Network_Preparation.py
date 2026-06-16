@@ -110,15 +110,12 @@ warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
 @dataclass
 class NetworkPrepConfig:
-    # TODO: rename LocalConfig class consistently
-    """Configuration for network preparation and analysis."""
+    """Script-specific parameters for network preparation.
 
-    # Output paths
-    output_path = NetworkConfig.intermediate_results_path
-    figures_path = NetworkConfig.figure_path
-
-    # Input file path
-    network_input_layer = NetworkConfig.Network_PERS_Corr
+    Only tunables live here (snapping, AADT merge, styling). All filesystem
+    paths and global flags come from ``NetworkConfig`` directly so there is a
+    single source of truth for them across the workflow.
+    """
 
     # Network snapping parameters in meters for topology errors (e.g., small gaps at intersections)
     snap_tolerance: float = 2.0
@@ -236,20 +233,10 @@ class NetworkPrepConfig:
         }
     )
 
-    @property
-    def aadt_path(self) -> Path:
-        """Full path to AADT data file."""
-        return NetworkConfig.AADT_data
-
-    @property
-    def world_path(self) -> Path:
-        """Full path to world boundaries file."""
-        return NetworkConfig.world_boundaries
-
     def __post_init__(self):
-        """Ensure output directories exist."""
-        self.output_path.mkdir(parents=True, exist_ok=True)
-        self.figures_path.mkdir(parents=True, exist_ok=True)
+        """Ensure global output directories exist."""
+        NetworkConfig.intermediate_results_path.mkdir(parents=True, exist_ok=True)
+        NetworkConfig.figure_path.mkdir(parents=True, exist_ok=True)
 
     def get_width_mapping(self, traffic_type: str) -> Dict[str, float]:
         """Generate width mapping for a traffic type."""
@@ -305,15 +292,15 @@ def load_network(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     """
     Load Serbian road network from a GIS file path using GeoPandas.
 
-    The file path is specified in ``config.network_input_layer`` and is read using
-    :func:`geopandas.read_file`.
+    The file path is specified in ``NetworkConfig.Network_PERS_Corr`` and is read
+    using :func:`geopandas.read_parquet`.
 
     Args:
         config: Network configuration
     """
 
     # Read into GeoDataFrame
-    gdf = gpd.read_parquet(config.network_input_layer)
+    gdf = gpd.read_parquet(NetworkConfig.Network_PERS_Corr)
     print("Successfully loaded feature layer.")
 
     # Select relevant attributes
@@ -472,7 +459,7 @@ def load_aadt_data(config: NetworkPrepConfig) -> gpd.GeoDataFrame:
     Returns:
         GeoDataFrame with AADT data
     """
-    aadt_network = gpd.read_file(config.aadt_path)
+    aadt_network = gpd.read_file(NetworkConfig.AADT_data)
 
     print(f"Loaded AADT data with columns: {list(aadt_network.columns)}")
 
@@ -872,7 +859,7 @@ def filter_by_country(
         Filtered network
     """
     # Load country outline
-    world = gpd.read_file(config.world_path)
+    world = gpd.read_file(NetworkConfig.world_boundaries)
     country = world.loc[world.SOV_A3 == config.exclude_country_code]
     country = country.to_crs(AADT_connected.crs)
 
@@ -974,7 +961,7 @@ def plot_aadt_categories_combined(
 
     plt.tight_layout()
     plt.savefig(
-        config.figures_path / "AADT_categories_combined.png",
+        NetworkConfig.figure_path / "AADT_categories_combined.png",
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
@@ -1043,7 +1030,7 @@ def plot_total_aadt_map(
     ax.legend(title=config.get_legend_title(traffic_type), loc="upper right")
     ax.axis("off")
     plt.savefig(
-        config.figures_path / f"{traffic_type}_aadt_map_og.png",
+        NetworkConfig.figure_path / f"{traffic_type}_aadt_map_og.png",
         dpi=config.figure_dpi,
         bbox_inches="tight",
     )
@@ -1095,7 +1082,7 @@ def plot_individual_aadt_maps(
         ax.legend(title=config.get_legend_title(traffic_type), loc="upper right")
         ax.axis("off")
         plt.savefig(
-            config.figures_path / f"{traffic_type}_aadt_map.png",
+            NetworkConfig.figure_path / f"{traffic_type}_aadt_map.png",
             dpi=config.figure_dpi,
             bbox_inches="tight",
         )
@@ -1230,7 +1217,7 @@ def create_igraph_and_export(
 
         # Save dropped roads for inspection
         dropped_gdf = base_network.loc[dropped_mask].reset_index(drop=True).set_crs(AADT_Serbia.crs)
-        dropped_gdf.to_parquet(config.output_path / "giant_component_dropped_roads.parquet")
+        dropped_gdf.to_parquet(NetworkConfig.intermediate_results_path / "giant_component_dropped_roads.parquet")
         print(f"  Saved {len(dropped_gdf)} dropped roads to giant_component_dropped_roads.parquet")
 
         fig, ax = plt.subplots(figsize=(14, 10))
@@ -1246,7 +1233,7 @@ def create_igraph_and_export(
         ax.legend()
         ax.set_title(f"Giant component: {retained_pct:.2f}% retained")
         ax.axis("off")
-        plt.savefig(config.figures_path / "giant_component_dropped_roads.png", dpi=config.figure_dpi, bbox_inches="tight")
+        plt.savefig(NetworkConfig.figure_path / "giant_component_dropped_roads.png", dpi=config.figure_dpi, bbox_inches="tight")
         if NetworkConfig.show_figures:
             plt.show()
 
@@ -1257,9 +1244,10 @@ def create_igraph_and_export(
 
     # Export to parquet
     edges_gdf = giant_edges.reset_index(drop=True).set_crs(AADT_Serbia.crs)
-    edges_gdf.to_parquet(config.Path_processed_road_network)
-    print(f"Directed graph saved to {config.Path_processed_road_network.resolve()}")
-    save_gdb_layer(edges_gdf, config.network_gdb, "main_network_directed", config.output_crs)
+    NetworkConfig.network_parquet.mkdir(parents=True, exist_ok=True)
+    edges_gdf.to_parquet(NetworkConfig.Path_processed_road_network)
+    print(f"Directed graph saved to {NetworkConfig.Path_processed_road_network.resolve()}")
+    save_gdb_layer(edges_gdf, NetworkConfig.network_gdb, "main_network_directed", NetworkConfig.output_crs)
 
 
 def main():
