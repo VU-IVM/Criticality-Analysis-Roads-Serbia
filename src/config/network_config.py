@@ -23,6 +23,10 @@ class NetworkConfig:
     hazard_exposure_parquet = parquet_path / "hazard_exposure"
     hazard_exposure_database = database_path / "hazard_exposure"
     hazard_exposure_gdb = hazard_exposure_database / "hazard_exposure.gdb"
+    # Step-1b (prepared road network) outputs go to the 'network' subfolder of each.
+    network_parquet = parquet_path / "network"
+    network_database = database_path / "network"
+    network_gdb = network_database / "network.gdb"
     results_path = BASE_DIR / "results"
     arcgis_results = results_path / "ArcGIS layers"
     arcgis_gpgk = arcgis_results / "Geopackages"
@@ -82,8 +86,8 @@ class NetworkConfig:
     #####################################################
 
     # processed road network (produced in 1b)
-    Path_processed_road_network = intermediate_results_path / "PERS_directed_final.parquet"
-    Path_processed_road_network_shp = intermediate_results_path / "PERS_directed_final.shp"
+    Path_processed_road_network = network_parquet / "main_network_directed.parquet"
+    Path_processed_road_network_shp = network_parquet / "main_network_directed.shp"
 
     #network criticality (single point of failure analysis) (produced in 2). Also saved to results folder.
     Path_criticality_results = intermediate_results_path / "criticality_results.parquet"
@@ -174,6 +178,8 @@ class NetworkConfig:
             self.local_accessibility_database,
             self.hazard_exposure_parquet,
             self.hazard_exposure_database,
+            self.network_parquet,
+            self.network_database,
             self.results_path,
             self.arcgis_results,
             self.arcgis_gpgk,

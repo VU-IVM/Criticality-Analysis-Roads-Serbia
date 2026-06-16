@@ -86,15 +86,32 @@ def save_hazard_vector(
     If *layer_name* already exists in the GDB (e.g. from a prior run) the GDB
     is rebuilt — preserving all other layers — so there are no FID conflicts.
     """
-    import shutil
-    import pyogrio
-
     gdf_out = gdf.to_crs(output_crs)
 
     parquet_dir = Path(parquet_dir)
     parquet_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = parquet_dir / f"{layer_name}.parquet"
     gdf_out.to_parquet(parquet_path)
+    print(f"Saved {layer_name} -> {parquet_path}")
+
+    save_gdb_layer(gdf, gdb_path, layer_name, output_crs)
+
+
+def save_gdb_layer(
+    gdf: gpd.GeoDataFrame,
+    gdb_path: Path,
+    layer_name: str,
+    output_crs: str = "EPSG:6316",
+) -> None:
+    """Write *gdf* (reprojected to *output_crs*) as ``layer_name`` in *gdb_path*.
+
+    If *layer_name* already exists in the GDB (e.g. from a prior run) the GDB
+    is rebuilt — preserving all other layers — so there are no FID conflicts.
+    """
+    import shutil
+    import pyogrio
+
+    gdf_out = gdf.to_crs(output_crs)
 
     gdb_path = Path(gdb_path)
     gdb_path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,7 +137,6 @@ def save_hazard_vector(
         str(gdb_path), driver="OpenFileGDB", layer=layer_name, promote_to_multi=True
     )
 
-    print(f"Saved {layer_name} -> {parquet_path}")
     print(f"Saved {layer_name} -> {gdb_path} (layer '{layer_name}')")
 
 

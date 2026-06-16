@@ -19,8 +19,11 @@ Inputs
 
 Outputs
 -------
-- intermediate_results/PERS_directed_final.parquet   Primary output: directed network
-  with AADT, speed, and free-flow travel time.  Used by all downstream scripts.
+- intermediate_results/parquet/network/main_network_directed.parquet   Primary output:
+  directed network with AADT, speed, and free-flow travel time (working CRS).
+  Used by all downstream scripts.
+- intermediate_results/database/network/network.gdb   Same network as an ArcGIS
+  File Geodatabase layer ``main_network_directed`` (reprojected to EPSG:6316).
 - intermediate_results/giant_component_dropped_roads.parquet  Roads excluded by the
   giant component filter (always written, for inspection).
 - figures/{traffic_type}_aadt_map.png  Individual AADT map per traffic type (6 files).
@@ -96,6 +99,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.simplify import *
 
 from config.network_config import NetworkConfig
+from utils.hazard_functions import save_gdb_layer
 
 # Suppress warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -1253,8 +1257,10 @@ def create_igraph_and_export(
 
     # Export to parquet
     edges_gdf = giant_edges.reset_index(drop=True).set_crs(AADT_Serbia.crs)
-    edges_gdf.to_parquet(config.output_path / "PERS_directed_final.parquet")
-    print(f"Directed graph saved to {(config.output_path / 'PERS_directed_final.parquet').resolve()}")
+    config.network_parquet.mkdir(parents=True, exist_ok=True)
+    edges_gdf.to_parquet(config.Path_processed_road_network)
+    print(f"Directed graph saved to {config.Path_processed_road_network.resolve()}")
+    save_gdb_layer(edges_gdf, config.network_gdb, "main_network_directed", config.output_crs)
 
 
 def main():
