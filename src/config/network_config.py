@@ -42,6 +42,11 @@ class NetworkConfig:
     results_path = BASE_DIR / "results"
     arcgis_results = results_path / "ArcGIS layers"
     arcgis_gpgk = arcgis_results / "Geopackages"
+    # Step-5d ArcGIS outputs: feature classes in a results File GDB ('database')
+    # serve as the data source for the matching .lyrx files ('lyrx'). No gpkg.
+    results_database = results_path / "database"
+    results_gdb = results_database / "results.gdb"
+    lyrx_results = results_path / "lyrx"
 
     accessibility_analysis_path = BASE_DIR / "accessibility_analysis"
     figure_path = BASE_DIR / "figures"
@@ -214,6 +219,8 @@ class NetworkConfig:
             self.results_path,
             self.arcgis_results,
             self.arcgis_gpgk,
+            self.results_database,
+            self.lyrx_results,
             self.accessibility_analysis_path,
             self.figure_path,
             self.climate_change_precipitation_folder,

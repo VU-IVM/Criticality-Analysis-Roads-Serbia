@@ -1925,11 +1925,15 @@ _CC_LABELS = ["No criticality", "Very Low", "Low", "Medium", "High", "Very High"
 def plot_climate_criticality_components(
     gdf_hazards: gpd.GeoDataFrame,
     figure_path: Path,
-    gpkg_dir: Path,
+    gdb_path: Path,
     lyrx_dir: Path,
     show_figures: bool = True,
 ) -> None:
-    """Three-panel map of the H / T / A sub-index classes, plus ArcGIS layers."""
+    """Three-panel map of the H / T / A sub-index classes, plus ArcGIS layers.
+
+    Each sub-index is written as a feature class in *gdb_path* (the lyrx data
+    source) with a matching .lyrx in *lyrx_dir*; no GeoPackage is produced.
+    """
     class_cols = ["H_class", "T_class", "A_class"]
     labels = _CC_LABELS
     colors = ["#e0e0e0", "#edf8fb", "#b3cde3", "#8c96c6", "#8856a7", "#810f7c"]
@@ -1982,7 +1986,7 @@ def plot_climate_criticality_components(
         ("A_class", "local_accessibility", "Local Accessibility"),
     ]:
         save_lyrx_layer(
-            gdf=gdf_hazards, gpkg_path=Path(gpkg_dir) / f"{name}.gpkg",
+            gdf=gdf_hazards, gpkg_path=None, gdb_path=gdb_path,
             lyrx_path=Path(lyrx_dir) / f"{name}.lyrx", layer_name=name,
             labels=labels, colors=colors, width_mapping=width_mapping,
             field=field, title=title,
@@ -1994,12 +1998,16 @@ def plot_climate_criticality_components(
 def plot_combined_climate_criticality(
     gdf_hazards: gpd.GeoDataFrame,
     figure_path: Path,
-    gpkg_dir: Path,
+    gdb_path: Path,
     lyrx_dir: Path,
     cc_class_col: str = "climate_criticality_class",
     show_figures: bool = True,
 ) -> None:
-    """Single map of the combined climate-criticality class, plus an ArcGIS layer."""
+    """Single map of the combined climate-criticality class, plus an ArcGIS layer.
+
+    The layer is written as a feature class in *gdb_path* (the lyrx data source)
+    with a matching .lyrx in *lyrx_dir*; no GeoPackage is produced.
+    """
     labels = _CC_LABELS
     colors = ["#e0e0e0", "#ffffcc", "#a1dab4", "#41b6c4", "#2c7fb8", "#253494"]
     color_map = dict(zip(labels, colors))
@@ -2034,7 +2042,7 @@ def plot_combined_climate_criticality(
 
     gdf_hazards = gdf_hazards.to_crs(original_crs)
     save_lyrx_layer(
-        gdf=gdf_hazards, gpkg_path=Path(gpkg_dir) / "climate_criticality_index.gpkg",
+        gdf=gdf_hazards, gpkg_path=None, gdb_path=gdb_path,
         lyrx_path=Path(lyrx_dir) / "climate_criticality_index.lyrx",
         layer_name="climate_criticality", labels=labels, colors=colors,
         width_mapping=width_mapping, field=cc_class_col, title="Climate Criticality Metric",
@@ -2368,17 +2376,16 @@ def export_climate_criticality_excel(
 def save_climate_criticality_geospatial(
     gdf: gpd.GeoDataFrame,
     parquet_path: Path,
-    gpkg_path: Path,
-    output_crs: str = "EPSG:6316",
 ) -> None:
-    """Save the scored, deduplicated network as Parquet (working CRS) and GeoPackage (output CRS)."""
+    """Save the scored, deduplicated network as Parquet (working CRS) + mirrored Excel.
+
+    No GeoPackage is written — the reprojected geospatial copy lives as the
+    ``climate_criticality`` feature class in the results GDB, produced by
+    ``plot_combined_climate_criticality``.
+    """
     parquet_path = Path(parquet_path)
-    gpkg_path = Path(gpkg_path)
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
-    gpkg_path.parent.mkdir(parents=True, exist_ok=True)
 
     gdf.to_parquet(parquet_path)
     print(f"Saved climate criticality -> {parquet_path}")
     save_excel_mirror(gdf, parquet_path)
-    gdf.to_crs(output_crs).to_file(gpkg_path, driver="GPKG")
-    print(f"Saved climate criticality -> {gpkg_path} (CRS {output_crs})")

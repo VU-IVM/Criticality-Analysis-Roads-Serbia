@@ -18,52 +18,68 @@ def save_lyrx_layer(
     width_mapping: dict[str, float],
     field: str,
     title: str | None = None,
+    gdb_path: Path | None = None,
+    output_crs: str = "EPSG:6316",
 ) -> None:
     """
-    Save a GeoDataFrame to GeoPackage and generate a matching ArcGIS Pro
+    Save a GeoDataFrame as a vector layer and generate a matching ArcGIS Pro
     layer file (.lyrx) with unique-value symbology (colour + width).
+
+    The .lyrx references its data source by absolute path, so the source must
+    remain in place. Two data-source modes:
+
+    * ``gdb_path`` given — the data is written as a feature class inside that
+      File GDB (reprojected to *output_crs*) and used as the lyrx source. No
+      GeoPackage is written. ``gpkg_path`` is ignored.
+    * ``gdb_path`` is None — the data is written to ``gpkg_path`` (GeoPackage)
+      and used as the lyrx source (legacy behaviour).
 
     Parameters
     ----------
     gdf : gpd.GeoDataFrame
-        GeoDataFrame to save. Should be in its original CRS (not reprojected
-        for plotting).
+        GeoDataFrame to save.
     gpkg_path : Path
-        Output path for the .gpkg file.
+        Output path for the .gpkg file (used only when *gdb_path* is None).
     lyrx_path : Path
         Output path for the .lyrx file.
     layer_name : str
-        Table name inside the GeoPackage.
-    labels : list[str]
-        Ordered class labels matching the classified field values.
-    colors : list[str]
-        Hex color strings, one per label.
-    width_mapping : dict[str, float]
-        Line width in points per label.
-    field : str
-        Attribute field used for classification.
-    title : str, optional
-        Display name for the layer in ArcGIS. Defaults to layer_name.
+        Feature class / table name inside the data source.
+    labels, colors, width_mapping, field, title
+        Unique-value symbology definition (see above).
+    gdb_path : Path, optional
+        File GDB to use as the data source instead of a GeoPackage.
+    output_crs : str
+        CRS the GDB feature class is written in (GDB mode only).
     """
 
-    # Save GeoPackage
-    gdf.to_file(gpkg_path, driver="GPKG", layer=layer_name)
-    print(f"Saved GeoPackage → {gpkg_path}")
+    if gdb_path is not None:
+        # GDB feature class as the data source (no GeoPackage written).
+        from utils.hazard_functions import save_gdb_layer
+
+        save_gdb_layer(gdf, gdb_path, layer_name, output_crs)
+        data_source = str(Path(gdb_path).absolute()) + f"/{layer_name}"
+    else:
+        # Save GeoPackage
+        gdf.to_file(gpkg_path, driver="GPKG", layer=layer_name)
+        print(f"Saved GeoPackage → {gpkg_path}")
+        data_source = str(Path(gpkg_path).absolute()) + f"/{layer_name}"
+
+    Path(lyrx_path).parent.mkdir(parents=True, exist_ok=True)
 
     try:
         import arcpy
     except ImportError:
         print(
             "Warning: arcpy could not be imported — skipping .lyrx layer generation for ArcGIS. "
-            "To enable ArcGIS layer files, run using the ArcGIS Pro Python environment: "
-            r"C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe"
+            "The data was written; to also generate ArcGIS layer files, run using the "
+            r"ArcGIS Pro Python environment: C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe"
         )
         return
 
     title = title or layer_name
 
     # 1. Let arcpy build a valid data connection
-    gpkg_layer_path = str(gpkg_path.absolute()) + f"/{layer_name}"
+    gpkg_layer_path = data_source
     tmp_layer_name = f"tmp_lyr_{layer_name}"
     arcpy.management.MakeFeatureLayer(gpkg_layer_path, tmp_layer_name)
     tmp_lyrx = lyrx_path.with_suffix(".tmp.lyrx")

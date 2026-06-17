@@ -18,7 +18,8 @@ Pipeline
 Two behaviours are read from NetworkConfig:
   * ``climate_hazards_only`` — climate-only vs all hazards for the H sub-index.
   * ``normalize_subindices`` — CC_norm (normalised sub-indices) vs CC_raw.
-The index is reprojected to EPSG:6316 for the GeoPackage outputs.
+ArcGIS outputs are feature classes in a results File GDB (reprojected to
+EPSG:6316) plus matching .lyrx files; no GeoPackage is written.
 """
 
 import sys
@@ -75,13 +76,13 @@ def main():
         normalize_subindices=config.normalize_subindices,
     )
 
-    # 6. Maps (sub-indices + combined), ArcGIS layers
+    # 6. Maps (sub-indices + combined); ArcGIS layers -> results GDB + .lyrx
     plot_climate_criticality_components(
-        gdf, config.figure_path, config.arcgis_gpgk, config.arcgis_results,
+        gdf, config.figure_path, config.results_gdb, config.lyrx_results,
         show_figures=config.show_figures,
     )
     plot_combined_climate_criticality(
-        gdf, config.figure_path, config.arcgis_gpgk, config.arcgis_results,
+        gdf, config.figure_path, config.results_gdb, config.lyrx_results,
         show_figures=config.show_figures,
     )
 
@@ -99,9 +100,6 @@ def main():
         gdf,
         parquet_path=config.intermediate_results_path
         / config.Path_climate_criticality_results.with_suffix(".parquet").name,
-        gpkg_path=config.results_path
-        / config.Path_climate_criticality_results.with_suffix(".gpkg").name,
-        output_crs=config.output_crs,
     )
 
 
