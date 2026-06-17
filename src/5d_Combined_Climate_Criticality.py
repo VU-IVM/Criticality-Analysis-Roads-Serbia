@@ -93,6 +93,7 @@ def main():
     export_climate_criticality_excel(
         gdf, config.Path_climate_criticality_results,
         climate_hazards_only=config.climate_hazards_only,
+        normalize_subindices=config.normalize_subindices,
     )
     save_climate_criticality_geospatial(
         gdf,

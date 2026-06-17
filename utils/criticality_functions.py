@@ -1764,15 +1764,26 @@ def score_climate_criticality(
     hazard_col = "H_climate" if climate_hazards_only else "H_all"
     gdf["H"] = gdf[hazard_col]
 
-    if normalize_subindices:
-        gdf["climate_criticality"] = _norm01(gdf["H"]) * (_norm01(gdf["T"]) + _norm01(gdf["A"]))
-    else:
-        gdf["climate_criticality"] = gdf["H"] * (gdf["T"] + gdf["A"])
+    def _combine(hazard_index: pd.Series) -> pd.Series:
+        """Combine a hazard sub-index with T and A (multiplicative)."""
+        if normalize_subindices:
+            return _norm01(hazard_index) * (_norm01(gdf["T"]) + _norm01(gdf["A"]))
+        return hazard_index * (gdf["T"] + gdf["A"])
 
+    # Primary (selected) track — drives the maps, statistics and the
+    # non-extended Excel sheets.
+    gdf["climate_criticality"] = _combine(gdf["H"])
     gdf["H_class"] = _classify(gdf["H"])
     gdf["T_class"] = _classify(gdf["T"])
     gdf["A_class"] = _classify(gdf["A"])
     gdf["climate_criticality_class"] = _classify(gdf["climate_criticality"])
+
+    # Extended track — always uses ALL hazards (H_all). Feeds the
+    # "Overview Extended" / "Hazard Exposure Extended" Excel sheets.
+    gdf["H_extended"] = gdf["H_all"]
+    gdf["H_class_extended"] = _classify(gdf["H_all"])
+    gdf["climate_criticality_extended"] = _combine(gdf["H_all"])
+    gdf["climate_criticality_class_extended"] = _classify(gdf["climate_criticality_extended"])
 
     # Aliases consumed by the plotting / statistics helpers below.
     gdf["criticality_mean"] = gdf["climate_criticality"]
@@ -2033,6 +2044,7 @@ def _format_climate_workbook(path: Path) -> None:
     class_columns = {
         "H_class", "H_climate_class", "T_class", "A_class",
         "CC_class", "climate_criticality_class",
+        "H_class_extended", "climate_criticality_class_extended",
     }
 
     for ws in wb.worksheets:
@@ -2055,30 +2067,145 @@ def _format_climate_workbook(path: Path) -> None:
                         cell.fill = class_fills[val]
                     if val in class_fonts_white:
                         cell.font = Font(name="Arial", size=10, color="FFFFFF")
+        # The Metric Descriptions sheet holds long text, so allow wider columns.
+        width_cap = 90 if ws.title == "Metric Descriptions" else 30
         for col_cells in ws.columns:
             max_len = max((len(str(c.value or "")) for c in col_cells), default=8)
-            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(max_len + 3, 30)
+            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(max_len + 3, width_cap)
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = ws.dimensions
 
     wb.save(path)
 
 
+# Static descriptions for the human-readable "Metric Descriptions" sheet.
+_DESC_IDENTIFIERS = [
+    ("objectid", "Sequential feature identifier", "—"),
+    ("oznaka_deo", "Road section identifier (deonica)", "—"),
+    ("smer_gdf1", "Carriageway / direction indicator", "—"),
+    ("kategorija", "Road category (IA, IB, IM, IIA, IIB)", "—"),
+    ("oznaka_put", "Road (route) designation", "—"),
+    ("oznaka_poc", "Start node code", "—"),
+    ("naziv_poce", "Start node name", "—"),
+    ("oznaka_zav", "End node code", "—"),
+    ("naziv_zavr", "End node name", "—"),
+    ("duzina_deo", "Official section length (source dataset)", "km"),
+    ("pocetna_st", "Start stationing (chainage)", "km"),
+    ("zavrsna_st", "End stationing (chainage)", "km"),
+    ("stanje", "Section condition / status", "—"),
+]
+_DESC_TRAFFIC = [
+    ("passenger_cars", "Daily passenger car count", "vehicles/day"),
+    ("buses", "Daily bus count", "vehicles/day"),
+    ("light_trucks", "Daily light truck count", "vehicles/day"),
+    ("medium_trucks", "Daily medium truck count", "vehicles/day"),
+    ("heavy_trucks", "Daily heavy truck count", "vehicles/day"),
+    ("articulated_vehicles", "Daily articulated vehicle count", "vehicles/day"),
+    ("total_aadt", "Total annual average daily traffic", "vehicles/day"),
+]
+_DESC_HAZARD = [
+    ("flood_depth", "Maximum inundation depth along section (1-in-100-year flood)", "cm"),
+    ("future_rainfall_change", "Projected change in extreme rainfall intensity (RCP 8.5, far future)", "% change"),
+    ("future_flood_change", "Projected change in river flood magnitude (reduction in return period)", "% change"),
+    ("max_pavement_temp", "Projected maximum pavement temperature (hottest 7 days)", "°C"),
+    ("wildfire_susceptibility", "Section intersects high-risk wildfire zone", "0/1 (no/yes)"),
+    ("landslide_exposure", "Section intersects historical landslide zone", "0/1 (no/yes)"),
+    ("snow_drift", "Length of section affected by snow drift susceptibility", "km"),
+]
+_DESC_TRAVEL = [
+    ("phl", "Passenger hours lost (daily, weighted by traffic volume)", "passenger-hours"),
+    ("thl", "Tonnage hours lost (daily, weighted by freight volume)", "ton-hours"),
+    ("pkl", "Passenger kilometers lost (additional distance due to rerouting)", "passenger-km"),
+    ("tkl", "Tonnage kilometers lost (additional freight distance)", "ton-km"),
+]
+_DESC_ACCESS = [
+    ("hospital_delay", "Additional travel time to nearest hospital", "hours"),
+    ("fire_delay", "Additional travel time from fire stations to service areas", "hours"),
+    ("police_delay", "Additional travel time from police stations to service areas", "hours"),
+    ("factory_delay", "Additional travel time from industrial areas to border crossings", "hours"),
+    ("port_delay", "Additional travel time from agricultural areas to ports", "hours"),
+    ("border_delay", "Additional travel time from agricultural areas to border crossings", "hours"),
+    ("railway_delay", "Additional travel time from agricultural areas to railway stations", "hours"),
+]
+
+
+def _metric_descriptions_df(
+    climate_hazards_only: bool, normalize_subindices: bool
+) -> pd.DataFrame:
+    """Build the 'Metric Descriptions' table (Column / Description / Unit).
+
+    Score ranges and formulas reflect the actual computation: each metric is
+    ranked into quintiles, convex-mapped (1->0, 2->1, 3->2, 4->5, 5->10) and
+    summed within each sub-index, then combined multiplicatively.
+    """
+    n_h = len(_HAZARD_CLIMATE_METRICS if climate_hazards_only else _HAZARD_METRICS)
+    h_scope = "climate hazards only" if climate_hazards_only else "all hazards"
+    if normalize_subindices:
+        formula = "norm(H) x (norm(T) + norm(A))"
+        formula_ext = "norm(H_extended) x (norm(T) + norm(A))"
+        cc_range = "0–2"
+    else:
+        formula = "H x (T + A)"
+        formula_ext = "H_extended x (T + A)"
+        cc_range = "composite score"
+
+    rows: list[tuple[str, str, str]] = []
+    rows.append(("— Identifiers —", "", ""))
+    rows += _DESC_IDENTIFIERS
+    rows.append(("— Traffic —", "", ""))
+    rows += _DESC_TRAFFIC
+    rows.append(("— Hazard exposure metrics —", "", ""))
+    rows += _DESC_HAZARD
+    rows.append(("— Travel disruption metrics —", "", ""))
+    rows += _DESC_TRAVEL
+    rows.append(("— Local accessibility metrics —", "", ""))
+    rows += _DESC_ACCESS
+    rows.append(("— Per-metric derived columns —", "", ""))
+    rows += [
+        ("<metric>_norm", "Min-max normalised metric value (log-transformed first for skewed metrics)", "0–1"),
+        ("<metric>_q", "Quintile score: 0 = no exposure, 1 = lowest 20% of exposed sections, 5 = highest 20%", "0–5"),
+        ("<metric>_cv", "Convex weight from the quintile score (1→0, 2→1, 3→2, 4→5, 5→10)", "0–10"),
+    ]
+    rows.append(("— Sub-indices and combined criticality —", "", ""))
+    rows += [
+        ("H", f"Hazard-exposure sub-index ({h_scope}): sum of convex scores of the {n_h} hazard metrics", f"0–{n_h * 10}"),
+        ("H_extended", "Extended hazard-exposure sub-index (all 7 hazards): sum of convex scores", "0–70"),
+        ("T", "National-scale travel-disruption sub-index: sum of convex scores of the 4 disruption metrics", "0–40"),
+        ("A", "Local-accessibility sub-index: sum of convex scores of the 7 accessibility metrics", "0–70"),
+        ("climate_criticality", f"Combined criticality ({h_scope}): {formula}", cc_range),
+        ("climate_criticality_extended", f"Combined criticality (all 7 hazards): {formula_ext}", cc_range),
+        ("H_class / T_class / A_class", "Sub-index criticality class (quintiles; 0 = No criticality)", "No criticality – Very High"),
+        ("H_class_extended", "All-hazards hazard-exposure criticality class", "No criticality – Very High"),
+        ("climate_criticality_class", f"Combined criticality class ({h_scope})", "No criticality – Very High"),
+        ("climate_criticality_class_extended", "Combined criticality class (all 7 hazards)", "No criticality – Very High"),
+    ]
+    return pd.DataFrame(rows, columns=["Column", "Description", "Unit"])
+
+
 def export_climate_criticality_excel(
     gdf: gpd.GeoDataFrame,
     output_path: Path,
     climate_hazards_only: bool = True,
+    normalize_subindices: bool = True,
 ) -> None:
     """Write the multi-sheet, formatted climate-criticality workbook.
 
-    Sheets: Overview, Hazard Exposure, National-Scale Disruption, Local
-    Accessibility. The Hazard Exposure sheet uses the climate-only or full
-    hazard set depending on *climate_hazards_only*.
+    Sheets (in order): Overview, Overview Extended, Hazard Exposure, Hazard
+    Exposure Extended, National-Scale Disruption, Local Accessibility, Metric
+    Descriptions. The plain sheets use the selected hazard set (climate-only
+    when *climate_hazards_only*); the "Extended" sheets always use all 7 hazards
+    (columns suffixed ``_extended``). Every data sheet is ordered from most to
+    least critical (climate_criticality, then H, T, A).
     """
     df = pd.DataFrame(gdf.drop(columns=gdf.geometry.name))
     df = df.reset_index(drop=True)
     if "objectid" not in df.columns:
         df["objectid"] = range(1, len(df) + 1)
+
+    # Order every sheet from most to least critical.
+    sort_cols = [c for c in ["climate_criticality", "H", "T", "A"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols, ascending=False).reset_index(drop=True)
 
     hazard_metrics = _HAZARD_CLIMATE_METRICS if climate_hazards_only else _HAZARD_METRICS
 
@@ -2089,23 +2216,33 @@ def export_climate_criticality_excel(
         return pairs
 
     overview = _EXCEL_ID_COLS + _EXCEL_TRAFFIC_COLS + [
-        "H", "H_all", "H_climate", "T", "A", "climate_criticality",
+        "H", "T", "A", "climate_criticality",
         "H_class", "T_class", "A_class", "climate_criticality_class",
     ]
+    overview_ext = _EXCEL_ID_COLS + _EXCEL_TRAFFIC_COLS + [
+        "H_extended", "T", "A", "climate_criticality_extended",
+        "H_class_extended", "T_class", "A_class", "climate_criticality_class_extended",
+    ]
     hazard = _EXCEL_ID_COLS + metric_pairs(hazard_metrics) + ["H", "H_class"]
+    hazard_ext = _EXCEL_ID_COLS + metric_pairs(_HAZARD_METRICS) + ["H_extended", "H_class_extended"]
     travel = _EXCEL_ID_COLS + metric_pairs(_TRAVEL_METRICS) + ["T", "T_class"]
     access = _EXCEL_ID_COLS + metric_pairs(_ACCESSIBILITY_METRICS) + ["A", "A_class"]
 
     def existing(cols):
         return [c for c in cols if c in df.columns]
 
+    descriptions = _metric_descriptions_df(climate_hazards_only, normalize_subindices)
+
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         df[existing(overview)].to_excel(writer, sheet_name="Overview", index=False)
+        df[existing(overview_ext)].to_excel(writer, sheet_name="Overview Extended", index=False)
         df[existing(hazard)].to_excel(writer, sheet_name="Hazard Exposure", index=False)
+        df[existing(hazard_ext)].to_excel(writer, sheet_name="Hazard Exposure Extended", index=False)
         df[existing(travel)].to_excel(writer, sheet_name="National-Scale Disruption", index=False)
         df[existing(access)].to_excel(writer, sheet_name="Local Accessibility", index=False)
+        descriptions.to_excel(writer, sheet_name="Metric Descriptions", index=False)
 
     _format_climate_workbook(output_path)
     print(f"Saved climate-criticality workbook -> {output_path}")
