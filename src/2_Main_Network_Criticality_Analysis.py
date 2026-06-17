@@ -766,13 +766,6 @@ def save_criticality_results(
     )
     save_excel_mirror(results, NetworkConfig.Path_criticality_results)
 
-    # Also save a GeoPackage copy to the results folder
-    NetworkConfig.results_path.mkdir(parents=True, exist_ok=True)
-    results.to_file(
-        NetworkConfig.results_path / NetworkConfig.Path_criticality_results.with_suffix(".gpkg").name,
-        driver="GPKG",
-    )
-
     _log(f"Criticality results saved to {NetworkConfig.Path_criticality_results.resolve()}")
 
 
