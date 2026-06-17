@@ -2106,11 +2106,11 @@ _DESC_TRAFFIC = [
 _DESC_HAZARD = [
     ("flood_depth", "Maximum inundation depth along section (1-in-100-year flood)", "cm"),
     ("future_rainfall_change", "Projected change in extreme rainfall intensity (RCP 8.5, far future)", "% change"),
-    ("future_flood_change", "Projected change in river flood magnitude (reduction in return period)", "% change"),
+    ("future_flood_change", "Projected change in river flood return period under 4°C of global warming (100 baseline return period)", "years of return period"),
     ("max_pavement_temp", "Projected maximum pavement temperature (hottest 7 days)", "°C"),
     ("wildfire_susceptibility", "Section intersects high-risk wildfire zone", "0/1 (no/yes)"),
     ("landslide_exposure", "Section intersects historical landslide zone", "0/1 (no/yes)"),
-    ("snow_drift", "Length of section affected by snow drift susceptibility", "km"),
+    ("snow_drift", "Length of historical snow drift intersecting this section", "km"),
 ]
 _DESC_TRAVEL = [
     ("phl", "Passenger hours lost (daily, weighted by traffic volume)", "passenger-hours"),
