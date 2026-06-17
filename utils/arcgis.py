@@ -52,9 +52,24 @@ def save_lyrx_layer(
         CRS the GDB feature class is written in (GDB mode only).
     """
 
+    # arcpy is optional — needed only for .lyrx generation.
+    try:
+        import arcpy
+    except ImportError:
+        arcpy = None
+
     if gdb_path is not None:
         # GDB feature class as the data source (no GeoPackage written).
         from utils.hazard_functions import save_gdb_layer
+
+        # arcpy holds a File GDB schema lock after reading a feature class, which
+        # would block save_gdb_layer from rebuilding the GDB for the next layer.
+        # Release any lock this process still holds before (re)writing.
+        if arcpy is not None:
+            try:
+                arcpy.management.ClearWorkspaceCache()
+            except Exception:
+                pass
 
         save_gdb_layer(gdf, gdb_path, layer_name, output_crs)
         data_source = str(Path(gdb_path).absolute()) + f"/{layer_name}"
@@ -66,9 +81,7 @@ def save_lyrx_layer(
 
     Path(lyrx_path).parent.mkdir(parents=True, exist_ok=True)
 
-    try:
-        import arcpy
-    except ImportError:
+    if arcpy is None:
         print(
             "Warning: arcpy could not be imported — skipping .lyrx layer generation for ArcGIS. "
             "The data was written; to also generate ArcGIS layer files, run using the "
@@ -147,3 +160,10 @@ def save_lyrx_layer(
 
     tmp_lyrx.unlink()
     print(f"Saved layer file → {lyrx_path}")
+
+    # Release the schema lock arcpy took on the data source so the next layer's
+    # GDB rewrite is not blocked.
+    try:
+        arcpy.management.ClearWorkspaceCache()
+    except Exception:
+        pass

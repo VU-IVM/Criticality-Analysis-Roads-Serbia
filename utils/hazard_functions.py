@@ -163,7 +163,18 @@ def save_gdb_layer(
                     preserved[lname] = gpd.read_file(str(gdb_path), layer=lname)
         except Exception:
             pass
-        shutil.rmtree(gdb_path)
+        # Retry the delete: in an ArcGIS Pro (arcpy) session a File GDB schema
+        # lock can linger briefly after it is released, so the first rmtree may
+        # raise PermissionError on a *.sr.lock file.
+        import time
+        for attempt in range(6):
+            try:
+                shutil.rmtree(gdb_path)
+                break
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.5)
 
     for lname, ldata in preserved.items():
         _sanitize_for_gdb(ldata).to_file(
