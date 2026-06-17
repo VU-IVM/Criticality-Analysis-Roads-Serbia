@@ -980,6 +980,123 @@ def print_hazard_analysis_summary(
     print(pd.DataFrame(master).to_string(index=False))
 
 
+# ---------------------------------------------------------------------------
+# 5a — Multi-hazard exposure count (binary yes/no per hazard)
+# ---------------------------------------------------------------------------
+
+def flag_future_precipitation(
+    gdf: gpd.GeoDataFrame,
+    precip_path: Path,
+    threshold: float = 10.0,
+    value_col: str = "max_rx1day_pct",
+):
+    """Boolean exposure flag per segment for projected extreme-rainfall change.
+
+    Loads the future-precipitation layer (4b), spatially joins the maximum
+    ``value_col`` (% change) onto *gdf*, and flags segments at or above
+    *threshold* percent. Returns a numpy boolean array aligned to ``gdf.index``.
+    """
+    precip = gpd.read_parquet(precip_path).to_crs(gdf.crs)
+    joined = add_impact_column(
+        gdf[["geometry"]].copy(), precip, "_precip", agg="max", col_to_focus=value_col
+    )
+    return (joined["_precip"].fillna(0) >= threshold).to_numpy()
+
+
+def build_hazard_count(
+    gdf: gpd.GeoDataFrame,
+    hazard_specs: list[tuple[str, str, Any]],
+    count_col: str = "hazard_count",
+) -> gpd.GeoDataFrame:
+    """Add one binary column per hazard plus a total *count_col*.
+
+    *hazard_specs* is an ordered list of ``(column_name, display_label, mask)``
+    where *mask* is a boolean array/Series aligned to ``gdf.index``.
+    """
+    gdf = gdf.copy()
+    for col, _label, mask in hazard_specs:
+        gdf[col] = np.asarray(mask).astype(int)
+    gdf[count_col] = gdf[[col for col, _, _ in hazard_specs]].sum(axis=1)
+    return gdf
+
+
+def summarize_hazard_counts(
+    gdf: gpd.GeoDataFrame,
+    hazard_specs: list[tuple[str, str, Any]],
+    count_col: str = "hazard_count",
+) -> None:
+    """Print roads exposed per hazard (count + % of network) and the
+    distribution of roads by number of hazards."""
+    n = len(gdf)
+    k_max = len(hazard_specs)
+    print("=" * 70)
+    print("MULTI-HAZARD EXPOSURE SUMMARY")
+    print("=" * 70)
+    print(f"Total road segments in network: {n}\n")
+
+    print("Roads exposed per hazard:")
+    for col, label, _ in hazard_specs:
+        c = int(gdf[col].sum())
+        print(f"  {label:34s}: {c:6d}  ({c / n * 100:5.1f}% of network)")
+
+    print("\nRoads by number of hazards:")
+    dist = gdf[count_col].value_counts().sort_index()
+    for k in range(0, k_max + 1):
+        c = int(dist.get(k, 0))
+        print(f"  {k} hazard(s): {c:6d}  ({c / n * 100:5.1f}% of network)")
+
+    exposed = int((gdf[count_col] >= 1).sum())
+    print(f"\nRoads exposed to at least one hazard: {exposed} ({exposed / n * 100:.1f}% of network)")
+
+
+def plot_hazard_count_map(
+    gdf: gpd.GeoDataFrame,
+    figure_path: Path,
+    count_col: str = "hazard_count",
+    n_hazards: int = 6,
+    dpi: int = 300,
+    show_figures: bool = True,
+) -> None:
+    """Map every road segment coloured by how many hazards it is exposed to.
+
+    Segments with no hazard are drawn faintly in grey; exposed segments use a
+    sequential yellow→red ramp with increasing line width per hazard count.
+    """
+    colors = ["#ffffb2", "#fed976", "#feb24c", "#fd8d3c", "#f03b20", "#bd0026",
+              "#7a0177", "#49006a"]
+    widths = {1: 0.8, 2: 1.2, 3: 1.8, 4: 2.5, 5: 3.2, 6: 4.0, 7: 4.6, 8: 5.2}
+
+    g = gdf.to_crs(3857)
+    fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor="white")
+
+    zero = g[g[count_col] == 0]
+    if not zero.empty:
+        zero.plot(ax=ax, color="#d9d9d9", linewidth=0.3, alpha=0.6, zorder=1)
+
+    for k in range(1, n_hazards + 1):
+        subset = g[g[count_col] == k]
+        if not subset.empty:
+            subset.plot(ax=ax, color=colors[k - 1], linewidth=widths[k], alpha=0.9, zorder=2 + k)
+
+    cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    legend_elements = [
+        Line2D([0], [0], color=colors[k - 1], lw=widths[k],
+               label=f"{k} hazard" + ("s" if k > 1 else ""))
+        for k in range(1, n_hazards + 1)
+    ]
+    ax.legend(handles=legend_elements, title="Number of hazards", loc="upper right",
+              fontsize=10, title_fontsize=11, frameon=True, fancybox=True, shadow=True,
+              framealpha=0.9, facecolor="white", edgecolor="#cccccc")
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
+    plt.savefig(Path(figure_path) / "hazard_count_map.png", dpi=dpi, bbox_inches="tight")
+    _show_or_close(show_figures)
+
+
 # ===========================================================================
 # 5c — Flood-scenario accessibility plotting
 # ===========================================================================

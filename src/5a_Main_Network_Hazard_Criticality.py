@@ -17,6 +17,7 @@ from config.network_config import NetworkConfig
 sys.path.append(str(NetworkConfig.BASE_DIR))
 from utils.criticality_functions import (
     apply_bias_correction,
+    build_hazard_count,
     calculate_flood_exposure,
     calculate_heat_exposure,
     calculate_vhl_landslides,
@@ -27,15 +28,18 @@ from utils.criticality_functions import (
     compute_bias_statistics,
     extract_profiles,
     fill_missing_categories,
+    flag_future_precipitation,
     load_vertical_coordinates,
     merge_baseline_roads,
     plot_all_hazard_comparisons,
     plot_elevation_bias,
     plot_elevation_profiles,
     plot_flood_exposure_correction,
+    plot_hazard_count_map,
     plot_vhl_flooded_map,
     print_hazard_analysis_summary,
     save_criticality_vector,
+    summarize_hazard_counts,
 )
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -112,12 +116,30 @@ def main():
         show_figures=config.show_figures,
     )
 
+    # --- Multi-hazard exposure count (binary yes/no across 6 hazards) ---
+    hazard_specs = [
+        ("hazard_flood", "Flood", gdf_results.index.isin(gdf_vhl_flooded.index)),
+        ("hazard_snow_drift", "Snow drift", gdf_results.index.isin(gdf_vhl_snowdrift.index)),
+        ("hazard_landslide", "Landslide", gdf_results.index.isin(gdf_vhl_landslides.index)),
+        ("hazard_wildfire", "Wildfire", gdf_results.index.isin(gdf_vhl_wildfire.index)),
+        ("hazard_heat", "Heat (pavement > 60°C)",
+         (gdf_vhl_heat["max_pavement_temp"] > 60).reindex(gdf_results.index, fill_value=False).to_numpy()),
+        ("hazard_future_precipitation", "Future precipitation (≥ 10% change)",
+         flag_future_precipitation(gdf_results, config.Path_precipitation_change_rcp_8_5_far_future, threshold=10.0)),
+    ]
+    gdf_hazard_count = build_hazard_count(gdf_results, hazard_specs)
+    plot_hazard_count_map(
+        gdf_hazard_count, config.figure_path,
+        n_hazards=len(hazard_specs), show_figures=config.show_figures,
+    )
+
     # --- Summary statistics ---
     if config.print_statistics:
         print_hazard_analysis_summary(
             gdf_results, gdf_vhl_flooded, gdf_vhl_snowdrift,
             gdf_vhl_landslides, gdf_vhl_wildfire,
         )
+        summarize_hazard_counts(gdf_hazard_count, hazard_specs)
 
 
 if __name__ == "__main__":
