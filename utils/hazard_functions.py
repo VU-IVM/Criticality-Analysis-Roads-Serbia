@@ -881,11 +881,18 @@ def calculate_future_max_precipitation(
     parquet_dir: Path,
     gdb_path: Path,
     output_crs: str = "EPSG:6316",
+    layer_names: dict | None = None,
 ) -> dict:
     """Compute max daily precipitation change per road for all rcp/period combinations.
 
     Saves parquet for each combination to *parquet_dir* and all to *gdb_path*.
     Returns ``results[rcp][period]`` dict with ``roads_with_agreement`` / ``no_agreement``.
+
+    The output file/layer name for each ``(rcp, period)`` is taken from
+    *layer_names* (a ``{(rcp, period): name}`` mapping) when provided, so the
+    caller can keep the config as the single source of truth for those names.
+    When omitted, the canonical long name is used (matching the
+    ``Path_precipitation_change_rcp_*`` entries in ``NetworkConfig``).
     """
     results: dict = {}
 
@@ -962,7 +969,12 @@ def calculate_future_max_precipitation(
                 "no_agreement": roads_no_agreement,
             }
 
-            layer_name = f"precipitation_change_rcp{rcp}_period{period}"
+            # Use the caller-provided name (e.g. derived from NetworkConfig) so the
+            # config stays authoritative; otherwise fall back to the canonical long name.
+            if layer_names and (rcp, period) in layer_names:
+                layer_name = layer_names[(rcp, period)]
+            else:
+                layer_name = f"change in maximum daily precipitation rcp {rcp} period {period}"
             save_hazard_vector(roads_with_agreement, parquet_dir, gdb_path, layer_name, output_crs)
 
     return results

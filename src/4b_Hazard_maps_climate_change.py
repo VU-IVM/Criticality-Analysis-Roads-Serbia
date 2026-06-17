@@ -80,6 +80,14 @@ def main():
     )
 
     # --- Future precipitation change ---
+    # Output names come from the config so it stays the single source of truth
+    # (these stems are read back by step 5d via the same config attributes).
+    precip_layer_names = {
+        ("45", "1"): config.Path_precipitation_change_rcp_45_period_1.stem,
+        ("45", "2"): config.Path_precipitation_change_rcp_45_period_2.stem,
+        ("85", "1"): config.Path_precipitation_change_rcp_85_period_1.stem,
+        ("85", "2"): config.Path_precipitation_change_rcp_8_5_far_future.stem,
+    }
     results = calculate_future_max_precipitation(
         data_path=config.data_path,
         roads_path=config.data_path / "Deonice_Februar_2025.shp",
@@ -87,6 +95,7 @@ def main():
         parquet_dir=config.hazard_exposure_parquet,
         gdb_path=config.hazard_exposure_gdb,
         output_crs=config.output_crs,
+        layer_names=precip_layer_names,
     )
 
     plot_precipitation_change(results, config.figure_path, dpi=300, show_figures=config.show_figures)
