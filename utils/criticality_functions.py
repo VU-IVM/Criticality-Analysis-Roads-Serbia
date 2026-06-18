@@ -1778,7 +1778,7 @@ _LOG_TRANSFORM_METRICS = [
     "factory_delay", "port_delay", "border_delay", "railway_delay",
 ]
 # Convex score per quintile: Q1=0, Q2=1, Q3=2, Q4=5, Q5=10 (0 = no criticality).
-CONVEX_MAP = {0: 0, 1: 0, 2: 1, 3: 2, 4: 5, 5: 10}
+CONVEX_MAP = {0: 0, 1: 0.5, 2: 1, 3: 2, 4: 5, 5: 10}
 
 
 def _safe_minmax(series: pd.Series) -> pd.Series:
