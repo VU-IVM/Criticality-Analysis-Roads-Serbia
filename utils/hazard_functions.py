@@ -142,50 +142,100 @@ def save_gdb_layer(
 ) -> None:
     """Write *gdf* (reprojected to *output_crs*) as ``layer_name`` in *gdb_path*.
 
-    If *layer_name* already exists in the GDB (e.g. from a prior run) the GDB
-    is rebuilt — preserving all other layers — so there are no FID conflicts.
+    If *layer_name* already exists in the GDB (e.g. from a prior run) only that
+    one feature class is overwritten; all other layers are left untouched.
     """
-    import shutil
-    import pyogrio
-
-    gdf_out = gdf.to_crs(output_crs)
+    gdf_out = _sanitize_for_gdb(gdf.to_crs(output_crs))
 
     gdb_path = Path(gdb_path)
     gdb_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # If the layer already exists, preserve all other layers, delete the GDB,
-    # then re-write everything. Avoids FID conflicts without needing osgeo.
-    preserved: dict[str, gpd.GeoDataFrame] = {}
-    if gdb_path.exists():
-        try:
-            for lname in pyogrio.list_layers(str(gdb_path))[:, 0]:
-                if lname != layer_name:
-                    preserved[lname] = gpd.read_file(str(gdb_path), layer=lname)
-        except Exception:
-            pass
-        # Retry the delete: in an ArcGIS Pro (arcpy) session a File GDB schema
-        # lock can linger briefly after it is released, so the first rmtree may
-        # raise PermissionError on a *.sr.lock file.
-        import time
-        for attempt in range(6):
-            try:
-                shutil.rmtree(gdb_path)
-                break
-            except PermissionError:
-                if attempt == 5:
-                    raise
-                time.sleep(0.5)
+    # Self-heal a corrupt GDB. A half-deleted GDB (e.g. left behind by a crashed
+    # run) can be missing its system catalog while the directory still exists;
+    # GDAL can then neither open nor overwrite it, so every write dead-locks with
+    # a PermissionError. If the directory is present but not a valid GDB, drop it
+    # so a fresh one is created below.
+    if gdb_path.exists() and not _is_valid_gdb(gdb_path):
+        _remove_corrupt_gdb(gdb_path)
 
-    for lname, ldata in preserved.items():
-        _sanitize_for_gdb(ldata).to_file(
-            str(gdb_path), driver="OpenFileGDB", layer=lname, promote_to_multi=True
+    # GDAL's OpenFileGDB driver (3.x) overwrites an existing layer in place when
+    # you write to the same layer name, leaving every other layer untouched. We
+    # deliberately do NOT delete the layer (or the whole GDB) first: an
+    # arcpy.Delete leaves a schema lock and a whole-GDB rmtree trips over the
+    # GDAL dataset-pool handle left open by reading the other layers — both
+    # surface as PermissionError on Windows while the next write/delete runs.
+    try:
+        gdf_out.to_file(
+            str(gdb_path), driver="OpenFileGDB", layer=layer_name,
+            promote_to_multi=True,
+        )
+    except Exception:
+        # Fallback for GDAL builds that refuse to overwrite a layer in place:
+        # drop just this feature class via OGR (same engine, no arcpy lock),
+        # then write it fresh.
+        _delete_gdb_layer_ogr(gdb_path, layer_name)
+        gdf_out.to_file(
+            str(gdb_path), driver="OpenFileGDB", layer=layer_name,
+            promote_to_multi=True,
         )
 
-    _sanitize_for_gdb(gdf_out).to_file(
-        str(gdb_path), driver="OpenFileGDB", layer=layer_name, promote_to_multi=True
-    )
-
     print(f"Saved {layer_name} -> {gdb_path} (layer '{layer_name}')")
+
+
+def _delete_gdb_layer_ogr(gdb_path: Path, layer_name: str) -> None:
+    """Delete a single feature class from *gdb_path* via OGR, if present.
+
+    Uses osgeo/OGR (the same GDAL engine pyogrio writes with) so no arcpy
+    schema lock is taken. Silently does nothing if osgeo is unavailable.
+    """
+    try:
+        from osgeo import ogr
+    except Exception:
+        return
+    ds = ogr.Open(str(gdb_path), update=1)
+    if ds is None:
+        return
+    try:
+        for i in range(ds.GetLayerCount()):
+            if ds.GetLayerByIndex(i).GetName() == layer_name:
+                ds.DeleteLayer(i)
+                break
+    finally:
+        ds = None  # close, release file handles
+
+
+def _is_valid_gdb(gdb_path: Path) -> bool:
+    """True if *gdb_path* looks like a usable File GDB.
+
+    Every valid File GDB contains the ``a00000001.gdbtable`` system catalog. A
+    GDB left half-deleted by a crashed run can lose its catalog while the
+    directory and a few orphan tables remain — that is what makes GDAL report
+    "Permission denied" on open and "Access is denied" on overwrite.
+    """
+    return (Path(gdb_path) / "a00000001.gdbtable").exists()
+
+
+def _remove_corrupt_gdb(gdb_path: Path) -> None:
+    """Delete a corrupt/unreadable GDB directory so it can be rebuilt."""
+    import shutil
+    import time
+
+    gdb_path = Path(gdb_path)
+    for attempt in range(5):
+        try:
+            shutil.rmtree(gdb_path)
+            break
+        except FileNotFoundError:
+            break
+        except PermissionError:
+            if attempt == 4:
+                raise PermissionError(
+                    f"Cannot remove corrupt GDB '{gdb_path}': it is locked by "
+                    "another process. Close ArcGIS Pro and any Jupyter kernels "
+                    "that have this geodatabase open, then re-run."
+                )
+            time.sleep(0.5)
+    print(f"Removed corrupt/incomplete GDB so it can be rebuilt: {gdb_path}")
 
 
 # ---------------------------------------------------------------------------
