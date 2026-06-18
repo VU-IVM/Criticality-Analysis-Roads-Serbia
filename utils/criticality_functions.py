@@ -2319,18 +2319,16 @@ def export_climate_criticality_excel(
     Exposure Extended, National-Scale Disruption, Local Accessibility, Metric
     Descriptions. The plain sheets use the selected hazard set (climate-only
     when *climate_hazards_only*); the "Extended" sheets always use all 7 hazards
-    (columns suffixed ``_extended``). Every data sheet is ordered from most to
-    least critical (climate_criticality, then H, T, A).
+    (columns suffixed ``_extended``). Each data sheet is ordered from largest to
+    smallest by its own headline metric (Overview: climate_criticality, Overview
+    Extended: climate_criticality_extended, Hazard Exposure: H, Hazard Exposure
+    Extended: H_extended, National-Scale Disruption: T, Local Accessibility: A).
+    The Metric Descriptions sheet is left as-is.
     """
     df = pd.DataFrame(gdf.drop(columns=gdf.geometry.name))
     df = df.reset_index(drop=True)
     if "objectid" not in df.columns:
         df["objectid"] = range(1, len(df) + 1)
-
-    # Order every sheet from most to least critical.
-    sort_cols = [c for c in ["climate_criticality", "H", "T", "A"] if c in df.columns]
-    if sort_cols:
-        df = df.sort_values(sort_cols, ascending=False).reset_index(drop=True)
 
     hazard_metrics = _HAZARD_CLIMATE_METRICS if climate_hazards_only else _HAZARD_METRICS
 
@@ -2353,20 +2351,24 @@ def export_climate_criticality_excel(
     travel = _EXCEL_ID_COLS + metric_pairs(_TRAVEL_METRICS) + ["T", "T_class"]
     access = _EXCEL_ID_COLS + metric_pairs(_ACCESSIBILITY_METRICS) + ["A", "A_class"]
 
-    def existing(cols):
-        return [c for c in cols if c in df.columns]
+    def sheet(cols, sort_by):
+        """Select existing *cols* and order rows largest-to-smallest by *sort_by*."""
+        sub = df[[c for c in cols if c in df.columns]]
+        if sort_by in sub.columns:
+            sub = sub.sort_values(sort_by, ascending=False)
+        return sub.reset_index(drop=True)
 
     descriptions = _metric_descriptions_df(climate_hazards_only, normalize_subindices)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        df[existing(overview)].to_excel(writer, sheet_name="Overview", index=False)
-        df[existing(overview_ext)].to_excel(writer, sheet_name="Overview Extended", index=False)
-        df[existing(hazard)].to_excel(writer, sheet_name="Hazard Exposure", index=False)
-        df[existing(hazard_ext)].to_excel(writer, sheet_name="Hazard Exposure Extended", index=False)
-        df[existing(travel)].to_excel(writer, sheet_name="National-Scale Disruption", index=False)
-        df[existing(access)].to_excel(writer, sheet_name="Local Accessibility", index=False)
+        sheet(overview, "climate_criticality").to_excel(writer, sheet_name="Overview", index=False)
+        sheet(overview_ext, "climate_criticality_extended").to_excel(writer, sheet_name="Overview Extended", index=False)
+        sheet(hazard, "H").to_excel(writer, sheet_name="Hazard Exposure", index=False)
+        sheet(hazard_ext, "H_extended").to_excel(writer, sheet_name="Hazard Exposure Extended", index=False)
+        sheet(travel, "T").to_excel(writer, sheet_name="National-Scale Disruption", index=False)
+        sheet(access, "A").to_excel(writer, sheet_name="Local Accessibility", index=False)
         descriptions.to_excel(writer, sheet_name="Metric Descriptions", index=False)
 
     _format_climate_workbook(output_path)
