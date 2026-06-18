@@ -1962,7 +1962,17 @@ def plot_climate_criticality_components(
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9))
         ax.set_title(title, fontsize=14, fontweight="bold")
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 7))
+    # Size each panel to the data's aspect ratio so the (equal-aspect) maps fill
+    # their cells instead of floating centred in over-wide boxes — that centring
+    # is what leaves big horizontal gaps between the panels. We reserve a fixed
+    # strip for the bottom legend and the panel titles, then make the remaining
+    # map area's aspect match the data exactly so the panels sit flush together.
+    minx, miny, maxx, maxy = gdf_hazards.total_bounds
+    data_aspect = (maxx - minx) / (maxy - miny)  # width / height
+    map_h, legend_in, title_in = 6.0, 0.95, 0.45  # inches
+    fig_h = map_h + legend_in + title_in
+    fig_w = 3 * map_h * data_aspect
+    fig, axes = plt.subplots(1, 3, figsize=(fig_w, fig_h))
     titles = ["Hazard-Exposure", "National-Scale Travel Disruption", "Local Accessibility"]
     for i, ax in enumerate(axes):
         plot_panel(axes[i], gdf_hazards, class_cols[i], chr(65 + i), titles[i])
@@ -1974,8 +1984,10 @@ def plot_climate_criticality_components(
     fig.legend(handles=legend_handles, title="Criticality Level", loc="lower center",
                bbox_to_anchor=(0.5, 0.02), ncol=6, fontsize=13, title_fontsize=15, frameon=True)
 
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.18)
+    # Pull the panels flush together (no tight_layout: it can't remove the
+    # centring gap). The reserved strips keep the legend and titles clear.
+    plt.subplots_adjust(left=0, right=1, top=1 - title_in / fig_h,
+                        bottom=legend_in / fig_h, wspace=0.02)
     plt.savefig(Path(figure_path) / "criticality_analysis_3panel.png", dpi=300, bbox_inches="tight")
 
     # ArcGIS layers per sub-index (restore original CRS first)
