@@ -1696,6 +1696,10 @@ def deduplicate_by_section(
 
         result = {group_col: grp[group_col].iloc[0]}
         base_row = grp.loc[grp[length_col].idxmax()]
+        if isinstance(base_row, pd.DataFrame):
+            # Duplicate index labels (e.g. one-to-many sjoin output): idxmax
+            # resolves to several rows — keep the first as the representative.
+            base_row = base_row.iloc[0]
         result[geom_name] = base_row[geom_name]
 
         for col in take_longest:
@@ -1717,7 +1721,9 @@ def deduplicate_by_section(
         for col in max_cols:
             try:
                 result[col] = grp[col].max()
-            except TypeError:
+            except (TypeError, ValueError):
+                # Non-aggregatable columns (e.g. per-row arrays such as flood/
+                # wildfire ``coverage``/``values``): keep the first non-null value.
                 nn = grp[col].dropna()
                 result[col] = nn.iloc[0] if not nn.empty else np.nan
 
