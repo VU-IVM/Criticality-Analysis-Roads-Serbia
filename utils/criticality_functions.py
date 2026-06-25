@@ -2067,7 +2067,7 @@ def plot_climate_criticality_components_4panel(
     # titles. A 2×2 grid needs a title strip above each of the two rows.
     minx, miny, maxx, maxy = gdf_hazards.total_bounds
     data_aspect = (maxx - minx) / (maxy - miny)
-    map_h, legend_in, title_in = 6.0, 0.95, 0.45  # inches
+    map_h, legend_in, title_in = 6.0, 1.25, 0.45  # inches (legend_in raised → more gap above legend)
     fig_h = 2 * map_h + legend_in + 2 * title_in
     fig_w = 2 * map_h * data_aspect
     fig, axes = plt.subplots(2, 2, figsize=(fig_w, fig_h))
@@ -2084,7 +2084,7 @@ def plot_climate_criticality_components_4panel(
 
     plt.subplots_adjust(left=0, right=1, top=1 - title_in / fig_h,
                         bottom=legend_in / fig_h, wspace=0.02,
-                        hspace=2 * title_in / map_h)
+                        hspace=1.1 * title_in / map_h)
     plt.savefig(Path(figure_path) / "criticality_analysis_4panel.png", dpi=300, bbox_inches="tight")
     _show_or_close(show_figures)
 
