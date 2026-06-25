@@ -34,6 +34,7 @@ from utils.criticality_functions import (
     export_climate_criticality_excel,
     load_and_preprocess_criticality_data,
     plot_climate_criticality_components,
+    plot_climate_criticality_components_4panel,
     plot_combined_climate_criticality,
     prepare_metrics,
     print_climate_criticality_statistics,
@@ -80,6 +81,9 @@ def main():
     plot_climate_criticality_components(
         gdf, config.figure_path, config.results_gdb, config.lyrx_results,
         show_figures=config.show_figures,
+    )
+    plot_climate_criticality_components_4panel(
+        gdf, config.figure_path, show_figures=config.show_figures,
     )
     plot_combined_climate_criticality(
         gdf, config.figure_path, config.results_gdb, config.lyrx_results,

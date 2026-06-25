@@ -2007,6 +2007,76 @@ def plot_climate_criticality_components(
     _show_or_close(show_figures)
 
 
+def plot_climate_criticality_components_4panel(
+    gdf_hazards: gpd.GeoDataFrame,
+    figure_path: Path,
+    show_figures: bool = True,
+) -> None:
+    """Four-panel map: the H / T / A sub-indices plus the extended hazard sub-index.
+
+    Same styling as :func:`plot_climate_criticality_components`; the 4th panel
+    shows ``H_class_extended`` (hazard exposure using all 7 hazards, not just the
+    climate subset). Figure only — no ArcGIS layers are written.
+    """
+    class_cols = ["H_class", "T_class", "A_class", "H_class_extended"]
+    titles = [
+        "Hazard-Exposure", "National-Scale Travel Disruption",
+        "Local Accessibility", "Extended Hazard-Exposure",
+    ]
+    missing = [c for c in class_cols if c not in gdf_hazards.columns]
+    if missing:
+        raise KeyError(f"Cannot draw 4-panel figure, missing columns: {missing}")
+
+    labels = _CC_LABELS
+    colors = ["#e0e0e0", "#edf8fb", "#b3cde3", "#8c96c6", "#8856a7", "#810f7c"]
+    color_map = dict(zip(labels, colors))
+    width_mapping = {
+        "No criticality": 0.2, "Very Low": 0.6, "Low": 0.9,
+        "Medium": 1.3, "High": 2.0, "Very High": 3.0,
+    }
+
+    gdf_hazards = gdf_hazards.to_crs(epsg=3857)
+
+    def plot_panel(ax, gdf, class_col, letter, title):
+        for cat in labels:
+            subset = gdf[gdf[class_col] == cat]
+            if not subset.empty:
+                subset.plot(
+                    ax=ax, color=color_map[cat], linewidth=width_mapping[cat],
+                    alpha=0.8 if cat != "No criticality" else 0.4,
+                    zorder=labels.index(cat),
+                )
+        cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, attribution=False)
+        ax.axis("off")
+        ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=22,
+                fontweight="bold", verticalalignment="top",
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9))
+        ax.set_title(title, fontsize=14, fontweight="bold")
+
+    # Size panels to the data aspect so the equal-aspect maps sit flush (same
+    # approach as the 3-panel figure), reserving strips for legend and titles.
+    minx, miny, maxx, maxy = gdf_hazards.total_bounds
+    data_aspect = (maxx - minx) / (maxy - miny)
+    map_h, legend_in, title_in = 6.0, 0.95, 0.45  # inches
+    fig_h = map_h + legend_in + title_in
+    fig_w = 4 * map_h * data_aspect
+    fig, axes = plt.subplots(1, 4, figsize=(fig_w, fig_h))
+    for i, ax in enumerate(axes):
+        plot_panel(ax, gdf_hazards, class_cols[i], chr(65 + i), titles[i])
+
+    legend_handles = [
+        Patch(facecolor=color_map[lbl], label=lbl, edgecolor="grey", linewidth=0.5)
+        for lbl in labels
+    ]
+    fig.legend(handles=legend_handles, title="Criticality Level", loc="lower center",
+               bbox_to_anchor=(0.5, 0.02), ncol=6, fontsize=13, title_fontsize=15, frameon=True)
+
+    plt.subplots_adjust(left=0, right=1, top=1 - title_in / fig_h,
+                        bottom=legend_in / fig_h, wspace=0.02)
+    plt.savefig(Path(figure_path) / "criticality_analysis_4panel.png", dpi=300, bbox_inches="tight")
+    _show_or_close(show_figures)
+
+
 def plot_combined_climate_criticality(
     gdf_hazards: gpd.GeoDataFrame,
     figure_path: Path,
