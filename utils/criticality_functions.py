@@ -2018,16 +2018,19 @@ def plot_climate_criticality_components_4panel(
     figure_path: Path,
     show_figures: bool = True,
 ) -> None:
-    """Four-panel map: the H / T / A sub-indices plus the extended hazard sub-index.
+    """Four-panel (2×2) map: the H / T / A sub-indices plus the extended hazard one.
 
-    Same styling as :func:`plot_climate_criticality_components`; the 4th panel
-    shows ``H_class_extended`` (hazard exposure using all 7 hazards, not just the
-    climate subset). Figure only — no ArcGIS layers are written.
+    Same styling as :func:`plot_climate_criticality_components`. The two hazard
+    metrics sit side by side on the top row — ``H_class`` (climate subset) top
+    left and ``H_class_extended`` (all 7 hazards) top right — with travel
+    disruption and local accessibility on the bottom row. Figure only — no
+    ArcGIS layers are written.
     """
-    class_cols = ["H_class", "T_class", "A_class", "H_class_extended"]
+    # Row-major order for a 2×2 grid: top row = the two hazard metrics.
+    class_cols = ["H_class", "H_class_extended", "T_class", "A_class"]
     titles = [
-        "Hazard-Exposure", "National-Scale Travel Disruption",
-        "Local Accessibility", "Extended Hazard-Exposure",
+        "Hazard-Exposure", "Extended Hazard-Exposure",
+        "National-Scale Travel Disruption", "Local Accessibility",
     ]
     missing = [c for c in class_cols if c not in gdf_hazards.columns]
     if missing:
@@ -2060,14 +2063,16 @@ def plot_climate_criticality_components_4panel(
         ax.set_title(title, fontsize=14, fontweight="bold")
 
     # Size panels to the data aspect so the equal-aspect maps sit flush (same
-    # approach as the 3-panel figure), reserving strips for legend and titles.
+    # approach as the 3-panel figure), reserving strips for legend and the per-row
+    # titles. A 2×2 grid needs a title strip above each of the two rows.
     minx, miny, maxx, maxy = gdf_hazards.total_bounds
     data_aspect = (maxx - minx) / (maxy - miny)
     map_h, legend_in, title_in = 6.0, 0.95, 0.45  # inches
-    fig_h = map_h + legend_in + title_in
-    fig_w = 4 * map_h * data_aspect
-    fig, axes = plt.subplots(1, 4, figsize=(fig_w, fig_h))
-    for i, ax in enumerate(axes):
+    fig_h = 2 * map_h + legend_in + 2 * title_in
+    fig_w = 2 * map_h * data_aspect
+    fig, axes = plt.subplots(2, 2, figsize=(fig_w, fig_h))
+    axes_flat = axes.flatten()
+    for i, ax in enumerate(axes_flat):
         plot_panel(ax, gdf_hazards, class_cols[i], chr(65 + i), titles[i])
 
     legend_handles = [
@@ -2078,7 +2083,8 @@ def plot_climate_criticality_components_4panel(
                bbox_to_anchor=(0.5, 0.02), ncol=6, fontsize=13, title_fontsize=15, frameon=True)
 
     plt.subplots_adjust(left=0, right=1, top=1 - title_in / fig_h,
-                        bottom=legend_in / fig_h, wspace=0.02)
+                        bottom=legend_in / fig_h, wspace=0.02,
+                        hspace=2 * title_in / map_h)
     plt.savefig(Path(figure_path) / "criticality_analysis_4panel.png", dpi=300, bbox_inches="tight")
     _show_or_close(show_figures)
 
