@@ -1,7 +1,7 @@
 # Road Network Criticality & Accessibility Analysis
 
 A collection of Python scripts and Jupyter Notebooks designed to assess the **criticality** of road network segments and evaluate **population accessibility** to emergency services.  
-Originally developed for the **Republic of Serbia**, the workflow is transferable to other national road networks.
+Originally developed for the **Republic of Serbia**, the workflow is transferable to other national road networks with slight adjustments.
 
 ---
 
