@@ -75,6 +75,7 @@ Thumbs.db
 # -----------------------
 .vscode/
 .idea/
+.claude/
 
 # -----------------------
 # Flowcharts
