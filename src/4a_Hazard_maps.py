@@ -7,6 +7,7 @@ from config.network_config import NetworkConfig
 
 sys.path.append(str(NetworkConfig.BASE_DIR))
 from utils.hazard_functions import (
+    assign_flood_depth_to_roads,
     assign_wildfire_risk_to_roads,
     clip_roads_by_country,
     load_and_clip_flood_raster,
@@ -18,8 +19,8 @@ from utils.hazard_functions import (
     plot_snowdrift_map,
     plot_wildfire_raster_map,
     plot_wildfire_roads_AB,
+    read_road_network,
 )
-from utils.utils import assign_flood_depth_to_roads, read_road_network
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
