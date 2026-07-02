@@ -1217,6 +1217,38 @@ def calculate_service_criticality(
     return exposed_edges
 
 
+def print_delay_category_counts(
+    exposed_edges: gpd.GeoDataFrame | None, label: str
+) -> None:
+    """Print how many exposed edges fall in each travel-time-delay category.
+
+    Uses the ``impact_class`` column produced by ``calculate_service_criticality``
+    / ``calculate_agri_criticality`` (bins of ``IMPACT_BINS`` / ``IMPACT_LABELS``).
+    Only edges with a ≥ 10 min delay are present, so the counts sum to the number
+    of exposed edge-segments shown on the corresponding map.
+    """
+    print(f"\nDelay categories — {label}:")
+    if exposed_edges is None or len(exposed_edges) == 0:
+        print("  (no exposed edges with >= 10 min delay)")
+        return
+    counts = exposed_edges["impact_class"].value_counts().reindex(IMPACT_LABELS, fill_value=0)
+    total = int(counts.sum())
+    for lbl in IMPACT_LABELS:
+        c = int(counts[lbl])
+        pct = c / total * 100 if total else 0.0
+        print(f"  {lbl:10s}: {c:6d} ({pct:5.1f}%)")
+    print(f"  {'Total':10s}: {total:6d}")
+
+    # Aggregate stats across all roads with a > 10 min delay (all exposed edges).
+    delays_min = pd.to_numeric(exposed_edges["travel_time_impact"], errors="coerce") * 60
+    mid_labels = ["20-30 min", "30-40 min", "40-60 min"]
+    mid_count = int(counts[mid_labels].sum())
+    mid_share = mid_count / total * 100 if total else 0.0
+    print(f"  Mean delay   : {delays_min.mean():6.1f} min")
+    print(f"  Median delay : {delays_min.median():6.1f} min")
+    print(f"  Share 20-60 min: {mid_share:5.1f}% ({mid_count}/{total})")
+
+
 def plot_service_criticality(
     exposed_edges: gpd.GeoDataFrame,
     base_network: gpd.GeoDataFrame,

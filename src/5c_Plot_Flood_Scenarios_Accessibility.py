@@ -24,6 +24,7 @@ from utils.criticality_functions import (
     plot_basin_water_depths,
     plot_criticality_2x2,
     plot_service_criticality,
+    print_delay_category_counts,
     save_impact_layers,
 )
 
@@ -68,6 +69,7 @@ def main():
     for layer_name, (results_path, figure_name) in services.items():
         print(f"\n=== {layer_name} ===")
         exposed_edges = calculate_service_criticality(results_path, base_network)
+        print_delay_category_counts(exposed_edges, layer_name.replace("_impacts", ""))
         plot_service_criticality(exposed_edges, base_network, config.figure_path, figure_name, show_figures=config.show_figures)
         service_edges[layer_name] = exposed_edges
 
@@ -77,6 +79,8 @@ def main():
     )
 
     agri_avg = calculate_agri_criticality(agri_results_path, base_network, delta_prefix="delta_avg")
+    for sink_type, edges in agri_avg.items():
+        print_delay_category_counts(edges, f"agriculture {sink_type} (average sink)")
     plot_agri_criticality_3x1(
         agri_avg, base_network, config.figure_path,
         file_name="SRB_agri_criticality_avg_3x1.png",
@@ -85,6 +89,8 @@ def main():
     )
 
     agri_nearest = calculate_agri_criticality(agri_results_path, base_network, delta_prefix="delta_nearest")
+    for sink_type, edges in agri_nearest.items():
+        print_delay_category_counts(edges, f"agriculture {sink_type} (nearest sink)")
     plot_agri_criticality_3x1(
         agri_nearest, base_network, config.figure_path,
         file_name="SRB_agri_criticality_nearest_3x1.png",
