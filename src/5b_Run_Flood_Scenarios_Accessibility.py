@@ -11,6 +11,7 @@ import shapely
 from shapely.geometry import Point
 from tqdm import tqdm
 from exactextract import exact_extract
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from simplify import *
 from config.network_config import NetworkConfig
@@ -94,6 +95,59 @@ def create_grid(bbox, height):
     return shapely.polygons(res_geoms)
 
 
+def apply_road_elevation_correction(
+    base_network: gpd.GeoDataFrame, Threshold: float, Stru_Threshold: float
+) -> gpd.GeoDataFrame:
+    """
+    Apply road-category elevation bias correction to a pre-loaded base_network
+    that already has raw sampled depth values in 'exposed_values_depth'.
+
+    This corrects for the fact that some road categories sit higher relative to
+    the surrounding terrain, so raw flood depths overestimate inundation.
+    The corrected depths are clamped to 0 and used to re-evaluate exposure.
+
+    Parameters
+    ----------
+    base_network : gpd.GeoDataFrame
+        Road network with 'exposed_values_depth', 'highway', and 'bridge' columns.
+    Threshold : float
+        Depth threshold (m) above which a normal road is considered exposed.
+    Stru_Threshold : float
+        Depth threshold (m) above which a bridge is considered exposed.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        base_network with updated 'exposed' and 'exposed_values_depth' columns.
+    """
+    def adjust_depths(row):
+        """Subtract road-category bias from raw sampled depths, clamp to 0."""
+        serbian_cat = OSM_TO_SERBIAN_CATEGORY.get(row.get("highway"))
+        bias = FINAL_BIAS.get(serbian_cat, 0.0)
+        if bias == 0.0:
+            return row["exposed_values_depth"]
+        return [max(v - bias, 0.0) for v in row["exposed_values_depth"]]
+
+    base_network = base_network.copy()
+    tqdm.pandas(desc="elevation bias correction")
+    base_network["adjusted_values"] = base_network.progress_apply(adjust_depths, axis=1)
+
+    def flagged_exposed_segments(row):
+        if pd.isna(row["bridge"]) or row["bridge"] == "no":
+            return any(val > Threshold for val in row["adjusted_values"])
+        else:
+            return any(val > Stru_Threshold for val in row["adjusted_values"])
+
+    tqdm.pandas(desc="re-evaluating exposure")
+    base_network["exposed"] = base_network.progress_apply(
+        flagged_exposed_segments, axis=1
+    )
+    base_network["exposed_values_depth"] = base_network["adjusted_values"]
+    base_network.drop(columns=["adjusted_values"], inplace=True)
+
+    return base_network
+
+
 def get_exposure_values(
     country_iso3, base_network, hazard_map, Threshold, Stru_Threshold
 ):
@@ -152,25 +206,13 @@ def get_exposure_values(
         pd.concat(collect_overlay), left_index=True, right_index=True
     )
 
-    def adjust_depths(row):
-        """Subtract road-category bias from raw sampled depths, clamp to 0."""
-        serbian_cat = OSM_TO_SERBIAN_CATEGORY.get(row.get("highway"))
-        bias = FINAL_BIAS.get(serbian_cat, 0.0)
-        if bias == 0.0:
-            return row["values"]
-        return [max(v - bias, 0.0) for v in row["values"]]
+    # Store raw sampled values before bias correction
+    base_network["exposed_values_depth"] = base_network["values"]
 
-    base_network["adjusted_values"] = base_network.progress_apply(adjust_depths, axis=1)
-
-    def flagged_exposed_segments(row):
-        if pd.isna(row["bridge"]) or row["bridge"] == "no":
-            return any(val > Threshold for val in row["adjusted_values"])
-        else:
-            return any(val > Stru_Threshold for val in row["adjusted_values"])
-
-    base_network["exposed"] = base_network.progress_apply(flagged_exposed_segments, axis=1)
-    base_network["exposed_values_depth"] = base_network["adjusted_values"]
-    base_network.drop(columns=["adjusted_values"], inplace=True)
+    # Apply elevation bias correction and re-evaluate exposure
+    base_network = apply_road_elevation_correction(
+        base_network, Threshold, Stru_Threshold
+    )
 
     return base_network
 
@@ -1282,6 +1324,80 @@ def normalise_exposed_column(network: gpd.GeoDataFrame, col: str = "exposed") ->
     network[col] = network[col].fillna(0).astype(float) > 0
     return network
 
+def _run_factory_analysis(
+    *, config, base_network, nodes, basins_data, graph, country_iso3, Subregion
+):
+    tqdm.pandas()
+    print("[factory] Loading data and computing baseline...")
+    Factory_criticality_folder = (
+        config.accessibility_analysis_path / "factory_criticality_results"
+    )
+    os.makedirs(Factory_criticality_folder, exist_ok=True)
+
+    df_factories = read_factory_data(config)
+    df_factories["vertex_id"] = nearest_network_nodes(df_factories, nodes)
+
+    Sink = read_road_border_data(config)
+    Sink = map_sinks_to_nearest_network_node(Sink, nodes)
+
+    df_factories = get_average_access_time(df_factories, Sink, graph)
+
+    print("[factory] Running flood scenario analysis...")
+    flood_exposure_factory_accessibility(
+        base_network, df_factories, Sink, Factory_criticality_folder,
+        basins_data, graph, country_iso3, Subregion,
+    )
+    print("[factory] Done.")
+
+
+def _run_agriculture_analysis(
+    *, config, base_network, nodes, basins_data, graph, country_iso3, Subregion
+):
+    tqdm.pandas()
+    print("[agriculture] Loading data and computing baseline...")
+    Agriculture_criticality_folder = (
+        config.accessibility_analysis_path / "allagri_criticality_results"
+    )
+    os.makedirs(Agriculture_criticality_folder, exist_ok=True)
+
+    df_agri = read_agri_data(config)
+    df_agri["vertex_id"] = nearest_network_nodes(df_agri, nodes)
+
+    sinks_dict = load_sinks(config, nodes)
+    df_agri = calculate_accessibility_by_sink_type(df_agri, sinks_dict, graph)
+    df_agri = update_column_names(df_agri, sinks_dict)
+
+    print("[agriculture] Running flood scenario analysis...")
+    flood_exposure_analysis_agriculture(
+        base_network, df_agri, Agriculture_criticality_folder,
+        basins_data, graph, sinks_dict, country_iso3, Subregion,
+    )
+    print("[agriculture] Done.")
+
+
+def _run_emergency_analysis(
+    *, config, base_network, nodes, basins_data, df_settlements,
+    graph, country_iso3, Subregion, label
+):
+    tqdm.pandas()
+    print(f"[{label}] Loading data and computing baseline...")
+
+    criticality_folder = (
+        config.accessibility_analysis_path / f"{label}_criticality_results"
+    )
+    os.makedirs(criticality_folder, exist_ok=True)
+
+    sink_df = load_and_map_sinks(config, nodes, label)
+    accessibility_df = get_distance_to_nearest_facility(df_settlements, sink_df, graph)
+
+    print(f"[{label}] Running flood scenario analysis...")
+    flood_exposure_emergency_service_accessibility(
+        accessibility_df, sink_df, criticality_folder,
+        basins_data, base_network, graph, country_iso3, Subregion,
+    )
+    print(f"[{label}] Done.")
+
+
 def main():
     """
     Run the end-to-end flood-scenario accessibility and criticality analysis.
@@ -1291,6 +1407,8 @@ def main():
     disrupts access under basin-specific scenarios. All outputs are saved into
     sector-specific criticality folders for further analysis.
 
+    All five sector analyses (including their data loading and baseline
+    calculations) are run in parallel using ProcessPoolExecutor.
 
     WARNING: This script performs large-scale network routing and basin-level
     flood disruption simulations and may take SEVERAL HOURS to run depending on
@@ -1303,193 +1421,69 @@ def main():
     # ------------------------------------------------------------
     config = NetworkConfig()
 
-    # Analysis parameters (only used indirectly in sub-functions)
     country_iso3 = "SRB"
     Subregion = "basins"
 
+    # Flood-depth thresholds for exposure classification
+    Threshold = 0.1        # normal roads (m)
+    Stru_Threshold = 0.5   # bridges (m)
+
     # ------------------------------------------------------------
-    # 1. Load road network and build routing graph
+    # 1. Shared setup: network, graph, basins, settlements
+    #    (all five sectors depend on these, so kept serial)
     # ------------------------------------------------------------
     base_network = gpd.read_parquet(config.Path_RoadNetwork)
+
+    print("Applying road-category elevation bias correction...")
+    base_network = apply_road_elevation_correction(base_network, Threshold, Stru_Threshold)
+
+    print("Normalising exposed column...")
+    base_network = normalise_exposed_column(base_network)
+
     print("Creating graph representation of the road network...")
     nodes, graph = create_graph_for_spatial_matching(base_network)
 
-    # Load flood maps + basins for clipping/aggregation
-    xr.open_dataset(config.flood_map_RP100, engine="rasterio")
     basins_data = gpd.read_file(config.basins_shapefile)
 
-    # ------------------------------------------------------------
-    # 2. Load and prepare settlements (baseline demand points)
-    # ------------------------------------------------------------
     df_settlements = read_population_data(config)
     df_settlements["vertex_id"] = nearest_network_nodes(df_settlements, nodes)
 
-    # ============================================================
-    # 3. INDUSTRIAL AREAS (Factories)
-    # ============================================================
-    # create output directory if not already existent
-    Factory_criticality_folder = (
-        config.accessibility_analysis_path / "factory_criticality_results"
-    )
-    os.makedirs(Factory_criticality_folder, exist_ok=True)
-
-    # Load factories + map to nearest road node
-    df_factories = read_factory_data(config)
-    print("Mapping industrial areas to nearest network nodes...")
-    df_factories["vertex_id"] = nearest_network_nodes(df_factories, nodes)
-
-    # Load border crossings (sinks) and map them to nodes
-    Sink = read_road_border_data(config)
-    Sink = map_sinks_to_nearest_network_node(Sink, nodes)
-
-    # Compute baseline average access times (normal conditions)
-    print("Calculating average access times from factories to road border crossings...")
-    df_factories = get_average_access_time(df_factories, Sink, graph)
-
-    base_network = normalise_exposed_column(base_network)
-
-    # Assess access disruption under flooding
-    print("Calculating factory access times under flooding scenarios...")
-    flood_exposure_factory_accessibility(
-        base_network,
-        df_factories,
-        Sink,
-        Factory_criticality_folder,
-        basins_data,
-        graph,
-        country_iso3,
-        Subregion,
-    )
-
-    # ============================================================
-    # 4. AGRICULTURAL AREAS
-    # ============================================================
-    # create output directory if not already existent
-    Agriculture_criticality_folder = (
-        config.accessibility_analysis_path / "allagri_criticality_results"
-    )
-    os.makedirs(Agriculture_criticality_folder, exist_ok=True)
-
-    # Load location data of agricultural areas and map to nearest network node
-    df_agri = read_agri_data(config)
-    print("Mapping agricultural areas to nearest network nodes...")
-    df_agri["vertex_id"] = nearest_network_nodes(df_agri, nodes)
-
-    # Load sinks: borders, ports, rail terminals
-    print("Loading sink location data (borders, ports, rail terminals)...")
-    sinks_dict = load_sinks(config, nodes)
-
+    # ------------------------------------------------------------
+    # 2. Run all five sector analyses in parallel
+    # ------------------------------------------------------------
     print("\n" + "=" * 60)
-    print("BASELINE ACCESSIBILITY CALCULATIONS")
+    print("LAUNCHING PARALLEL SECTOR ANALYSES")
     print("=" * 60)
 
-    # Baseline access to borders/ports/terminals
-    print("Calculating baseline agricultural accessibility to all sink types...")
-    df_agri = calculate_accessibility_by_sink_type(df_agri, sinks_dict, graph)
-    df_agri = update_column_names(df_agri, sinks_dict)
-
-    # Flood impact on agricultural accessibility
-    print("Calculating agricultural access under flooding scenarios...")
-    flood_exposure_analysis_agriculture(
-        base_network,
-        df_agri,
-        Agriculture_criticality_folder,
-        basins_data,
-        graph,
-        sinks_dict,
-        country_iso3,
-        Subregion,
+    shared = dict(
+        config=config,
+        base_network=base_network,
+        nodes=nodes,
+        basins_data=basins_data,
+        graph=graph,
+        country_iso3=country_iso3,
+        Subregion=Subregion,
     )
 
-    # ============================================================
-    # 5. FIREFIGHTERS
-    # ============================================================
-    # create output directory if not already existent
-    Fire_criticality_folder = (
-        config.accessibility_analysis_path / "fire_criticality_results"
-    )
-    os.makedirs(Fire_criticality_folder, exist_ok=True)
+    with ProcessPoolExecutor() as executor:
+        futures = {
+            executor.submit(_run_factory_analysis, **shared): "factory",
+            executor.submit(_run_agriculture_analysis, **shared): "agriculture",
+            executor.submit(_run_emergency_analysis, **shared, df_settlements=df_settlements, label="firefighters"): "firefighters",
+            executor.submit(_run_emergency_analysis, **shared, df_settlements=df_settlements, label="hospitals"): "hospitals",
+            executor.submit(_run_emergency_analysis, **shared, df_settlements=df_settlements, label="police"): "police",
+        }
+        for future in as_completed(futures):
+            label = futures[future]
+            try:
+                future.result()
+                print(f"✓ [{label}] completed successfully.")
+            except Exception as exc:
+                print(f"✗ [{label}] raised an exception: {exc}")
 
-    # Load location data of fire stations and map them to nearest network node
-    print("Loading firefighter locations...")
-    sink_firefighters = load_and_map_sinks(config, nodes, "firefighters")
-
-    print("Calculating distance to the nearest fire station...")
-    accessibility_firefighters = get_distance_to_nearest_facility(
-        df_settlements, sink_firefighters, graph
-    )
-
-    # run accessibility analysis to fire stations under flooding
-    flood_exposure_emergency_service_accessibility(
-        accessibility_firefighters,
-        sink_firefighters,
-        Fire_criticality_folder,
-        basins_data,
-        base_network,
-        graph,
-        country_iso3,
-        Subregion,
-    )
-
-    # ============================================================
-    # 6. HEALTHCARE FACILITIES
-    # ============================================================
-    # create output directory if not already existent
-    Health_care_criticality_folder = (
-        config.accessibility_analysis_path / "healthcare_criticality_results"
-    )
-    os.makedirs(Health_care_criticality_folder, exist_ok=True)
-
-    # Load location data of healthcare facilities and map them to nearest network node
-    print("Loading healthcare locations...")
-    sink_hospitals = load_and_map_sinks(config, nodes, "hospitals")
-
-    print("Calculating access to the nearest hospital...")
-    accessibility_hospitals = get_distance_to_nearest_facility(
-        df_settlements, sink_hospitals, graph
-    )
-
-    # run accessibility analysis to hospitals under flooding
-    flood_exposure_emergency_service_accessibility(
-        accessibility_hospitals,
-        sink_hospitals,
-        Health_care_criticality_folder,
-        basins_data,
-        base_network,
-        graph,
-        country_iso3,
-        Subregion,
-    )
-
-    # ============================================================
-    # 7. POLICE
-    # ============================================================
-    # create output directory if not already existent
-    Police_criticality_folder = (
-        config.accessibility_analysis_path / "police_criticality_results"
-    )
-    os.makedirs(Police_criticality_folder, exist_ok=True)
-
-    # Load location data of police stations and map them to nearest network node
-    print("Loading police station locations...")
-    sink_police = load_and_map_sinks(config, nodes, "police")
-
-    print("Calculating access to the nearest police station...")
-    accessibility_police = get_distance_to_nearest_facility(
-        df_settlements, sink_police, graph
-    )
-
-    # run accessibility analysis to police stations under flooding
-    flood_exposure_emergency_service_accessibility(
-        accessibility_police,
-        sink_police,
-        Police_criticality_folder,
-        basins_data,
-        base_network,
-        graph,
-        country_iso3,
-        Subregion,
-    )
+    print("\n" + "=" * 60)
+    print("ALL ANALYSES COMPLETE")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
