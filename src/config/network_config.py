@@ -57,47 +57,64 @@ class NetworkConfig:
     temperature_figures_folder = BASE_DIR / "figures" / "temperature"
 
     ##########################################
-    # Input files
+    # Input files (supplied in input_files/)
     ##########################################
-    # TODO rename var path files to be more consistent and clear
+
+    # --- Road network & traffic ---
     Path_RoadNetwork = data_path / "base_network_SRB_basins.parquet"
-    osm_path = data_path / "SRB.osm.pbf"
-    AADT_data = data_path / "PGDS_2024.shp"
     Network_PERS_Corr = data_path / "DeoniceRSDP-Jul2025_corrected_topology.parquet"
     Original_road_network = roads_path = data_path / "DeoniceRSDP-Jul2025..shp"
-    Path_FactoryFile = data_path / "2_Factory_Company_geolocations.xlsx"
-    path_to_Borders = data_path / "Borders_geocoded.xlsx"
-    Path_AgriFile = data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
-    path_to_Sinks = data_path / "Borders_Ports_Rail_geocoded.xlsx"
-    Path_SettlementData_Excel = data_path / "population_NEW_settlement_geocoded.xlsx"
-    firefighters = data_path / "6_Firefighters_geocoded.xlsx"
-    hospitals = data_path / "4_Hospitals_healthcenters_geocoded.xlsx"
-    police_stations = data_path / "6_Police_geocoded.xlsx"
-    basins_shapefile = data_path / "hybas_eu_lev09_v1c.shp"
-    flood_map_RP100 = data_path / "Europe_RP100_filled_depth.tif"
+    AADT_data = data_path / "PGDS_2024.shp"
+    osm_path = data_path / "SRB.osm.pbf"
+    Path_baseline_road_network = data_path / "Deonice_Februar_2025.shp"
+
+    # --- Boundaries & basins ---
     world_boundaries = data_path / "ne_10m_admin_0_countries.shp"
-    Path_agriculture_input = (
-        data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
-    )
+    basins_shapefile = data_path / "hybas_eu_lev09_v1c.shp"
+
+    # --- Flood hazard ---
+    flood_map_RP100 = data_path / "Europe_RP100_filled_depth.tif"
+    Path_flooding_climate_change = data_path / "disEnsemble_highExtremes.nc"
+    Path_flood_statistics_per_basin = data_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
+
+    # --- Other hazards (snow / landslide / wildfire) ---
     Path_snow_drift_data = data_path / "snezni_nanosi_studije.shp"
     Path_landslide_data = data_path / "Nestabilne_pojave.shp"
-    Path_flooding_climate_change = data_path / "disEnsemble_highExtremes.nc"
     landslide_susceptibility = data_path / "landslide_susceptibility.tif"
-    Path_flood_statistics_per_basin = data_path / "SRB_flood_statistics_per_Basin_basins_scenario.csv"
     wildfire_risk = data_path / "wildfire risk" / "stepen ugrozenosti od pozara Srbijasume.tif"
+
+    # --- Temperature & urbanisation ---
+    # (climate-change precipitation grids live in climate_change_precipitation_folder;
+    #  their individual .nc filenames are constructed in code, see hazard_functions)
     historic_temperature = temperature_input_folder / "TX7D_1961-1990.tif"
     current_temperature = temperature_input_folder / "TX7D_1991-2020.tif"
     current_max_pavement_temperature = temperature_input_folder / "TPAV_2021-2025.tif"
     degree_of_urbanization = data_path / "GHS_SMOD_E2025_GLOBE_R2023A_54009_1000_V2_0_R4_C20.tif"
-    # baseline road network sections and elevation data (used in 5a)
-    Path_baseline_road_network = data_path / "Deonice_Februar_2025.shp"
+
+    # --- Accessibility: service points ---
+    hospitals = data_path / "4_Hospitals_healthcenters_geocoded.xlsx"
+    firefighters = data_path / "6_Firefighters_geocoded.xlsx"
+    police_stations = data_path / "6_Police_geocoded.xlsx"
+
+    # --- Accessibility: economic activities & sinks ---
+    Path_FactoryFile = data_path / "2_Factory_Company_geolocations.xlsx"
+    Path_AgriFile = data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
+    Path_agriculture_input = (
+        data_path / "1_agriculture_2023_serbia_NEW_FINAL_26092025.xlsm"
+    )
+    path_to_Borders = data_path / "Borders_geocoded.xlsx"
+    path_to_Sinks = data_path / "Borders_Ports_Rail_geocoded.xlsx"
+
+    # --- Population ---
+    Path_SettlementData_Excel = data_path / "population_NEW_settlement_geocoded.xlsx"
+
+    # --- Elevation ---
     dem_serbia = data_path / "dem_serbia.tif"
     Path_vertical_coordinates = (
         data_path / "Vertical coordinates" / "RSDP_Feb_2026" / "RSDP_Feb_2026"
         / "Deonice" / "RSDP_Deonice_Feb_2026.shp"
     )
 
-    
     #####################################################
     # Paths for intermediate results
     #####################################################
@@ -160,9 +177,6 @@ class NetworkConfig:
 
     #final climate criticality ranking (produced in 5d, also saved as parquet and gpkg)
     Path_climate_criticality_results = results_path / 'Climate_Criticality_PuteviSrbije.xlsx'
-
-
-
 
     #Path for figures that are created by the scripts
     Path_factory_acces_avg = figure_path / 'factory_access_avg.png'
