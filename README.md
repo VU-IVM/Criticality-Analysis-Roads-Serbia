@@ -46,24 +46,20 @@ The workflow follows this approximate sequence:
 ```plaintext
 Criticality-Analysis-Roads-Serbia/
 ├── notebooks/                      # Step-by-step notebooks (1a … 5d); each hardcodes its paths in the first cells
-├── src/                            # Python scripts mirroring the notebooks, driven by the central config
-│   ├── config/
-│   │   └── network_config.py       # Central paths & settings — used ONLY by the src/ scripts
+├── src/                            # Python scripts mirroring the notebooks, driven by the config file
+│   ├── config/network_config.py    # Central paths & settings — used ONLY by the src/ scripts
 │   └── simplify.py                 # Network simplification helpers (step 5b)
 ├── utils/                          # Shared function modules imported by the scripts and notebooks
-│   ├── accessibility_functions.py  # Step 3  — baseline accessibility analysis
-│   ├── criticality_functions.py    # Steps 5a, 5c, 5d — hazard criticality, flood-scenario plots, combined index
-│   ├── hazard_functions.py         # Step 4  — hazard layers (4a–4c); shared helpers also used in 1b & 2
-│   ├── arcgis.py                   # ArcGIS .lyrx export helper (used internally by the step-4/5 modules)
-│   └── __init__.py                 # Marks utils/ as a package
+│   ├── accessibility_functions.py  # Step 3 — baseline accessibility analysis
+│   ├── criticality_functions.py    # Step 5 — hazard criticality, flood-scenario plots, combined metric
+│   ├── hazard_functions.py         # Step 4 — hazard layers (4a–4c)
+│   └── arcgis.py                   # ArcGIS .lyrx export helper (used internally by the step-4/5 modules)
 ├── ArcGIS_notebooks/               # arcpy versions of the figure & hazard notebooks
 ├── ArcGIS_deliverable/             # Notebook to build the ArcGIS deliverable layers
 ├── flowcharts/                     # Per-step flowcharts (.png/.mmd) and their generators
 ├── run_all.py                      # Runs every script in src/ in order
 └── environment.yml                 # Conda/mamba environment specification
 ```
-
-> **Paths — scripts vs notebooks:** the `src/` **scripts** read every input/output location from `src/config/network_config.py`, so paths are configured in one place. The **notebooks** do **not** use that config — each one hardcodes its paths in the first cells, which makes it easy to open a single notebook and rerun just one part of the workflow after adjusting those paths.
 
 ---
 
