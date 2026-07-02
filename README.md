@@ -19,8 +19,8 @@ This repository provides a comprehensive workflow to:
    - Police stations  
    And the access times of industrial and agricultural areas to road borders, ports and rail terminals
 4. **Evaluate hazard exposure**, including:  
-   - Flooding, landslides and snowdrifts under current climatic conditions
-   - Flooding and heavy precipitation under climate change  
+   - Flooding, landslides, snowdrifts and wildfires under current climatic conditions
+   - Flooding, heavy precipitation and heat under climate change  
 5. **Calculate combined climate–criticality metric** that considers the previously evaluated hazard exposure, national-scale travel disruptions and local accessibiliy
 
 ---
@@ -31,25 +31,40 @@ The analysis is implemented through a series of Jupyter Notebooks and correspond
 The workflow follows this approximate sequence:
 
 | Step | Description | Notebooks | Scripts |
-| ------ | ------------- | ----------- | --------- |
-| **1. Network Preparation** | Load, simplify, and preprocess the national road network | `1a_NetworkFigures.ipynb`<br>`1b_NetworkPreparation.ipynb` | `1a_NetworkFigures.py`<br>`1b_NetworkPreparation.py` |
-| **2. Criticality Analysis** | Compute disruption impact of each road segment | `2_MainNetwork_CriticalityAnalysis.ipynb` | `2_MainNetwork_CriticalityAnalysis.py` |
-| **3. Accessibility Analysis** | Assess travel time of population clusters to facilities |`3a_Baseline_Accesibility_Analysis-factories.ipynb`<br>`3b_Baseline_Accesibility_Analysis-farms.ipynb`<br>`3c_Baseline_Accesibility_Analysis-firefighters.ipynb`<br>`3d_Baseline_Accesibility_Analysis-hospital.ipynb`<br>`3e_Baseline_Accesibility_Analysis-policestations.ipynb` | `3a_Baseline_Accesibility_Analysis.py`<br>`3b_plot_figures.py` |
-| **4. Hazard Mapping** | Generate hazard layers (baseline + climate change) | `4a_Hazard_maps.ipynb`<br>`4b_Hazard_Maps_Climate_Change.ipynb` | `4a_Hazard_maps.py`<br>`4b_Hazard_maps_climate_change.py` |
-| **5. Combined Risk Analysis** | Hazard‑informed network criticality and accessibility | `5a_MainNetwork_Hazard_Criticality.ipynb`<br>`5b_Flood_Scenarios_Accessibility.ipynb`<br>`5c_CombinedClimateCriticality.ipynb` | `5a_MainNetwork_Hazard_Criticality.py`<br>`5b_Flood_Scenarios_Accessibility.py`<br>`5c_CombinedClimateCriticality.py` |
+| --- | --- | --- | --- |
+| **1. Network Preparation** | Load, simplify and preprocess the national road network | `1a_Network_Figures.ipynb`<br>`1b_Network_Preparation.ipynb` | `1a_Network_Figures.py`<br>`1b_Network_Preparation.py` |
+| **2. Criticality Analysis** | Disruption impact of each road segment (single point of failure) | `2_Main_Network_Criticality_Analysis.ipynb` | `2_Main_Network_Criticality_Analysis.py` |
+| **3. Accessibility Analysis** | Baseline travel time of population / economic areas to facilities and sinks | `3a–3e_Baseline_Accesibility_Analysis-*.ipynb`<br>(factories, farms, firefighters, hospital, police) | `3a_Baseline_Accessibility_Analysis.py`<br>`3b_Plot_Baseline_Accessibility_Analysis.py` |
+| **4. Hazard Mapping** | Hazard layers, baseline + climate change (incl. pavement temperature) | `4a_Hazard_maps.ipynb`<br>`4b_Hazard_Maps_Climate_Change.ipynb`<br>`4c_Temperature.ipynb` | `4a_Hazard_maps.py`<br>`4b_Hazard_maps_climate_change.py`<br>`4c_Temperature.py` |
+| **5. Combined Risk Analysis** | Hazard-informed criticality, flood-scenario accessibility (run + plot), and the combined climate-criticality index | `5a_Main_Network_Hazard_Criticality.ipynb`<br>`5b_Run_Flood_Scenarios_Accessibility.ipynb`<br>`5c_Plot_Flood_Scenarios_Accessibility.ipynb`<br>`5d_Combined_Climate_Criticality.ipynb` | `5a_Main_Network_Hazard_Criticality.py`<br>`5b_Run_Flood_Scenarios_Accessibility.py`<br>`5c_Plot_Flood_Scenarios_Accessibility.py`<br>`5d_Combined_Climate_Criticality.py` |
+| **6. ArcGIS Deliverable** *(optional)* | Build ArcGIS-ready layers / deliverable | `ArcGIS_deliverable/6_Build_ArcGIS_Deliverable.ipynb`<br>`ArcGIS_notebooks/*` | — |
 
 ---
 
 ## Repository Structure
 
 ```plaintext
-criticality-analysis/
-├── notebooks/                     # Interactive Jupyter notebooks showing the full workflow step‑by‑step.
-└── src/                           # Python scripts for easier execution and slightly extended functionality
-    └── config/                    
-        └── network_config.py      # Main configuration file (paths & settings)
-
+Criticality-Analysis-Roads-Serbia/
+├── notebooks/                      # Step-by-step notebooks (1a … 5d); each hardcodes its paths in the first cells
+├── src/                            # Python scripts mirroring the notebooks, driven by the central config
+│   ├── config/
+│   │   └── network_config.py       # Central paths & settings — used ONLY by the src/ scripts
+│   └── simplify.py                 # Network simplification helpers (step 5b)
+├── utils/                          # Shared function modules imported by the scripts and notebooks
+│   ├── accessibility_functions.py  # Step 3  — baseline accessibility analysis
+│   ├── criticality_functions.py    # Steps 5a, 5c, 5d — hazard criticality, flood-scenario plots, combined index
+│   ├── hazard_functions.py         # Step 4  — hazard layers (4a–4c); shared helpers also used in 1b & 2
+│   ├── arcgis.py                   # ArcGIS .lyrx export helper (used internally by the step-4/5 modules)
+│   └── __init__.py                 # Marks utils/ as a package
+├── ArcGIS_notebooks/               # arcpy versions of the figure & hazard notebooks
+├── ArcGIS_deliverable/             # Notebook to build the ArcGIS deliverable layers
+├── flowcharts/                     # Per-step flowcharts (.png/.mmd) and their generators
+├── run_all.py                      # Runs every script in src/ in order
+└── environment.yml                 # Conda/mamba environment specification
 ```
+
+> **Paths — scripts vs notebooks:** the `src/` **scripts** read every input/output location from `src/config/network_config.py`, so paths are configured in one place. The **notebooks** do **not** use that config — each one hardcodes its paths in the first cells, which makes it easy to open a single notebook and rerun just one part of the workflow after adjusting those paths.
+
 ---
 
 ## Installation
