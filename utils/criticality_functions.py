@@ -45,6 +45,7 @@ tqdm.pandas()
 # Generic save helper: parquet + GDB layer + Excel attribute table (EPSG:6316)
 # ---------------------------------------------------------------------------
 
+
 def save_criticality_vector(
     gdf: gpd.GeoDataFrame,
     parquet_dir: Path,
@@ -63,6 +64,7 @@ def save_criticality_vector(
 # ===========================================================================
 # 5a — Main network hazard criticality
 # ===========================================================================
+
 
 def merge_baseline_roads(
     gdf_results: gpd.GeoDataFrame,
@@ -92,7 +94,9 @@ def merge_baseline_roads(
     gdf_new_rows = gdf_deonice[mask_new].copy()
 
     shared_cols = [col for col in gdf_results.columns if col in gdf_new_rows.columns]
-    cols_only_in_results = [col for col in gdf_results.columns if col not in gdf_new_rows.columns]
+    cols_only_in_results = [
+        col for col in gdf_results.columns if col not in gdf_new_rows.columns
+    ]
 
     gdf_new_rows = gdf_new_rows[shared_cols].copy()
     for col in cols_only_in_results:
@@ -155,7 +159,9 @@ def fill_missing_categories(exposed_roads: gpd.GeoDataFrame) -> gpd.GeoDataFrame
     """Fill missing ``kategorija`` from the road designation (``oznaka_put``)."""
     cat_map = {"A1": "IA", "A2": "IA", "A3": "IA", "A4": "IA", "39": "IB"}
     mask = exposed_roads["kategorija"].isna()
-    exposed_roads.loc[mask, "kategorija"] = exposed_roads.loc[mask, "oznaka_put"].map(cat_map)
+    exposed_roads.loc[mask, "kategorija"] = exposed_roads.loc[mask, "oznaka_put"].map(
+        cat_map
+    )
     return exposed_roads
 
 
@@ -163,7 +169,10 @@ def fill_missing_categories(exposed_roads: gpd.GeoDataFrame) -> gpd.GeoDataFrame
 # 5a — Elevation bias analysis (road Z-profiles vs DEM)
 # ---------------------------------------------------------------------------
 
-def load_vertical_coordinates(vertical_coordinates_path: Path) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+
+def load_vertical_coordinates(
+    vertical_coordinates_path: Path,
+) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """Load road sections with vertical (Z) coordinates.
 
     Keeps only roads where every vertex has a non-zero Z value; adds
@@ -183,16 +192,26 @@ def load_vertical_coordinates(vertical_coordinates_path: Path) -> tuple[gpd.GeoD
     ].copy()
 
     vertical_coordinates["z_min"] = vertical_coordinates.geometry.apply(
-        lambda g: min(c[2] for line in g.geoms for c in line.coords)
-        if g.geom_type == "MultiLineString" else min(c[2] for c in g.coords)
+        lambda g: (
+            min(c[2] for line in g.geoms for c in line.coords)
+            if g.geom_type == "MultiLineString"
+            else min(c[2] for c in g.coords)
+        )
     )
     vertical_coordinates["z_max"] = vertical_coordinates.geometry.apply(
-        lambda g: max(c[2] for line in g.geoms for c in line.coords)
-        if g.geom_type == "MultiLineString" else max(c[2] for c in g.coords)
+        lambda g: (
+            max(c[2] for line in g.geoms for c in line.coords)
+            if g.geom_type == "MultiLineString"
+            else max(c[2] for c in g.coords)
+        )
     )
-    vertical_coordinates["z_range"] = vertical_coordinates["z_max"] - vertical_coordinates["z_min"]
+    vertical_coordinates["z_range"] = (
+        vertical_coordinates["z_max"] - vertical_coordinates["z_min"]
+    )
 
-    vertical_coordinates_h = vertical_coordinates.set_crs(epsg=3909, allow_override=True)
+    vertical_coordinates_h = vertical_coordinates.set_crs(
+        epsg=3909, allow_override=True
+    )
     vertical_coordinates_4326 = vertical_coordinates_h.to_crs(epsg=4326)
 
     print(f"Roads with complete Z profiles: {len(vertical_coordinates)}")
@@ -268,14 +287,27 @@ def plot_elevation_profiles(
     for i, (cat, idx) in enumerate(examples.items()):
         row = vertical_coordinates.loc[idx]
 
-        axes[i].plot(row["distances_km"], row["z_profile"], label="Measured Z", linewidth=2)
-        axes[i].plot(row["distances_km"], row["dem_profile"], label="DEM Elevation",
-                     linewidth=2, linestyle="--", color="brown")
+        axes[i].plot(
+            row["distances_km"], row["z_profile"], label="Measured Z", linewidth=2
+        )
+        axes[i].plot(
+            row["distances_km"],
+            row["dem_profile"],
+            label="DEM Elevation",
+            linewidth=2,
+            linestyle="--",
+            color="brown",
+        )
         axes[i].fill_between(
-            row["distances_km"], row["z_profile"], row["dem_profile"],
-            alpha=0.15, color="blue",
-            where=[not (np.isnan(z) or np.isnan(d))
-                   for z, d in zip(row["z_profile"], row["dem_profile"])],
+            row["distances_km"],
+            row["z_profile"],
+            row["dem_profile"],
+            alpha=0.15,
+            color="blue",
+            where=[
+                not (np.isnan(z) or np.isnan(d))
+                for z, d in zip(row["z_profile"], row["dem_profile"])
+            ],
         )
 
         title = f"{panels[i]} {row['PutOzn']} ({row['PutKateg']}) — {row['CvorPocNaz']} → {row['CvorZavNaz']}"
@@ -287,7 +319,11 @@ def plot_elevation_profiles(
 
     axes[-1].set_xlabel("Distance along segment (km)", fontsize=13, fontweight="bold")
     plt.tight_layout()
-    plt.savefig(Path(figure_path) / "elevation_profiles_by_category.png", dpi=dpi, bbox_inches="tight")
+    plt.savefig(
+        Path(figure_path) / "elevation_profiles_by_category.png",
+        dpi=dpi,
+        bbox_inches="tight",
+    )
     _show_or_close(show_figures)
 
 
@@ -304,14 +340,35 @@ def compute_bias_statistics(vertical_coordinates: gpd.GeoDataFrame) -> gpd.GeoDa
     print(f"Roads with Z data: {has_z.sum()}")
 
     subset["mean_diff"] = subset.apply(
-        lambda row: np.nanmean([z - d for z, d in zip(row["z_profile"], row["dem_profile"])
-                                if not (np.isnan(z) or np.isnan(d))]), axis=1)
+        lambda row: np.nanmean(
+            [
+                z - d
+                for z, d in zip(row["z_profile"], row["dem_profile"])
+                if not (np.isnan(z) or np.isnan(d))
+            ]
+        ),
+        axis=1,
+    )
     subset["median_diff"] = subset.apply(
-        lambda row: np.nanmedian([z - d for z, d in zip(row["z_profile"], row["dem_profile"])
-                                  if not (np.isnan(z) or np.isnan(d))]), axis=1)
+        lambda row: np.nanmedian(
+            [
+                z - d
+                for z, d in zip(row["z_profile"], row["dem_profile"])
+                if not (np.isnan(z) or np.isnan(d))
+            ]
+        ),
+        axis=1,
+    )
     subset["std_diff"] = subset.apply(
-        lambda row: np.nanstd([z - d for z, d in zip(row["z_profile"], row["dem_profile"])
-                               if not (np.isnan(z) or np.isnan(d))]), axis=1)
+        lambda row: np.nanstd(
+            [
+                z - d
+                for z, d in zip(row["z_profile"], row["dem_profile"])
+                if not (np.isnan(z) or np.isnan(d))
+            ]
+        ),
+        axis=1,
+    )
 
     subset["dem_min"] = subset["dem_profile"].apply(lambda d: np.nanmin(d))
     subset["dem_max"] = subset["dem_profile"].apply(lambda d: np.nanmax(d))
@@ -339,18 +396,29 @@ def compute_bias_confidence_intervals(clean: gpd.GeoDataFrame) -> pd.DataFrame:
         n = len(data)
         mean, std = data.mean(), data.std()
 
-        ci_mean = scipy_stats.t.interval(0.95, df=n - 1, loc=mean, scale=std / np.sqrt(n))
+        ci_mean = scipy_stats.t.interval(
+            0.95, df=n - 1, loc=mean, scale=std / np.sqrt(n)
+        )
 
         np.random.seed(42)
-        boot_medians = [np.median(np.random.choice(data.values, size=n, replace=True))
-                        for _ in range(10000)]
+        boot_medians = [
+            np.median(np.random.choice(data.values, size=n, replace=True))
+            for _ in range(10000)
+        ]
         ci_median = np.percentile(boot_medians, [2.5, 97.5])
 
-        ci_results.append({
-            "PutKateg": cat, "n": n, "median": data.median(),
-            "median_ci_low": ci_median[0], "median_ci_high": ci_median[1],
-            "mean": mean, "mean_ci_low": ci_mean[0], "mean_ci_high": ci_mean[1],
-        })
+        ci_results.append(
+            {
+                "PutKateg": cat,
+                "n": n,
+                "median": data.median(),
+                "median_ci_low": ci_median[0],
+                "median_ci_high": ci_median[1],
+                "mean": mean,
+                "mean_ci_low": ci_mean[0],
+                "mean_ci_high": ci_mean[1],
+            }
+        )
 
     ci_df = pd.DataFrame(ci_results)
     print(ci_df.to_string(index=False))
@@ -359,8 +427,10 @@ def compute_bias_confidence_intervals(clean: gpd.GeoDataFrame) -> pd.DataFrame:
     pooled = clean[clean["PutKateg"].isin(["IIA", "IIB"])]
     n = len(pooled)
     np.random.seed(42)
-    boot = [np.median(np.random.choice(pooled["mean_diff"].values, size=n, replace=True))
-            for _ in range(10000)]
+    boot = [
+        np.median(np.random.choice(pooled["mean_diff"].values, size=n, replace=True))
+        for _ in range(10000)
+    ]
     ci = np.percentile(boot, [2.5, 97.5])
     print(f"\nPooled IIA+IIB (n={n})")
     print(f"Median: {pooled['mean_diff'].median():.2f} m")
@@ -369,7 +439,9 @@ def compute_bias_confidence_intervals(clean: gpd.GeoDataFrame) -> pd.DataFrame:
     return ci_df
 
 
-def plot_elevation_bias(ci_df: pd.DataFrame, figure_path: Path, dpi: int = 300, show_figures: bool = True) -> None:
+def plot_elevation_bias(
+    ci_df: pd.DataFrame, figure_path: Path, dpi: int = 300, show_figures: bool = True
+) -> None:
     """Plot median/mean elevation bias with 95% CIs per road category."""
     category_order = ["IM", "IA", "IB", "IIA", "IIB"]
     ci_df = ci_df.set_index("PutKateg").loc[category_order].reset_index()
@@ -377,14 +449,35 @@ def plot_elevation_bias(ci_df: pd.DataFrame, figure_path: Path, dpi: int = 300, 
     fig, ax = plt.subplots(figsize=(10, 6))
     x = range(len(ci_df))
     labels = [f"{row['PutKateg']}\n(n={row['n']})" for _, row in ci_df.iterrows()]
-    ax.errorbar(x, ci_df["median"],
-                yerr=[ci_df["median"] - ci_df["median_ci_low"],
-                      ci_df["median_ci_high"] - ci_df["median"]],
-                fmt="o", capsize=8, capthick=2, markersize=10, label="Median + 95% CI", zorder=3)
-    ax.errorbar([i + 0.15 for i in x], ci_df["mean"],
-                yerr=[ci_df["mean"] - ci_df["mean_ci_low"],
-                      ci_df["mean_ci_high"] - ci_df["mean"]],
-                fmt="s", capsize=8, capthick=2, markersize=10, color="red", label="Mean + 95% CI", zorder=3)
+    ax.errorbar(
+        x,
+        ci_df["median"],
+        yerr=[
+            ci_df["median"] - ci_df["median_ci_low"],
+            ci_df["median_ci_high"] - ci_df["median"],
+        ],
+        fmt="o",
+        capsize=8,
+        capthick=2,
+        markersize=10,
+        label="Median + 95% CI",
+        zorder=3,
+    )
+    ax.errorbar(
+        [i + 0.15 for i in x],
+        ci_df["mean"],
+        yerr=[
+            ci_df["mean"] - ci_df["mean_ci_low"],
+            ci_df["mean_ci_high"] - ci_df["mean"],
+        ],
+        fmt="s",
+        capsize=8,
+        capthick=2,
+        markersize=10,
+        color="red",
+        label="Mean + 95% CI",
+        zorder=3,
+    )
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=13)
     ax.set_xlabel("Road Category", fontsize=14, fontweight="bold")
@@ -394,7 +487,11 @@ def plot_elevation_bias(ci_df: pd.DataFrame, figure_path: Path, dpi: int = 300, 
     ax.tick_params(axis="y", labelsize=12)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(Path(figure_path) / "elevation_bias_by_category.png", dpi=dpi, bbox_inches="tight")
+    plt.savefig(
+        Path(figure_path) / "elevation_bias_by_category.png",
+        dpi=dpi,
+        bbox_inches="tight",
+    )
     _show_or_close(show_figures)
 
 
@@ -415,16 +512,22 @@ def apply_bias_correction(
         exposed_roads["max_depth"] - exposed_roads["bias"]
     ).clip(lower=0)
 
-    summary = exposed_roads.groupby("kategorija").agg(
-        total=("max_depth", "count"),
-        originally_flooded=("max_depth", lambda x: (x > 0).sum()),
-        still_flooded=("corrected_max_depth", lambda x: (x > 0).sum()),
-        bias=("bias", "first"),
-        avg_original_depth=("max_depth", "mean"),
-        avg_corrected_depth=("corrected_max_depth", "mean"),
-    ).reset_index()
+    summary = (
+        exposed_roads.groupby("kategorija")
+        .agg(
+            total=("max_depth", "count"),
+            originally_flooded=("max_depth", lambda x: (x > 0).sum()),
+            still_flooded=("corrected_max_depth", lambda x: (x > 0).sum()),
+            bias=("bias", "first"),
+            avg_original_depth=("max_depth", "mean"),
+            avg_corrected_depth=("corrected_max_depth", "mean"),
+        )
+        .reset_index()
+    )
     summary["removed"] = summary["originally_flooded"] - summary["still_flooded"]
-    summary["pct_removed"] = (summary["removed"] / summary["originally_flooded"] * 100).round(1)
+    summary["pct_removed"] = (
+        summary["removed"] / summary["originally_flooded"] * 100
+    ).round(1)
     print(summary.to_string(index=False))
 
     return exposed_roads
@@ -445,7 +548,9 @@ def plot_flood_exposure_correction(
     fig, axes = plt.subplots(1, 2, figsize=figsize, facecolor="white")
     fig.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.0, wspace=0.02)
 
-    for idx, (label, col) in enumerate([("A", "max_depth"), ("B", "corrected_max_depth")]):
+    for idx, (label, col) in enumerate(
+        [("A", "max_depth"), ("B", "corrected_max_depth")]
+    ):
         ax = axes[idx]
 
         not_flooded = gdf_mercator[gdf_mercator[col] == 0]
@@ -455,9 +560,17 @@ def plot_flood_exposure_correction(
         if not flooded.empty:
             flooded.plot(ax=ax, color="#2171b5", linewidth=1.5, zorder=3)
 
-        ax.text(0.05, 0.95, label, transform=ax.transAxes, fontsize=20, fontweight="bold",
-                verticalalignment="top", zorder=10,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+        ax.text(
+            0.05,
+            0.95,
+            label,
+            transform=ax.transAxes,
+            fontsize=20,
+            fontweight="bold",
+            verticalalignment="top",
+            zorder=10,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+        )
 
     _set_common_extent(axes, bounds_3857)
     for ax in axes:
@@ -469,11 +582,22 @@ def plot_flood_exposure_correction(
         Line2D([0], [0], color="#2171b5", lw=2, label="Flooded"),
         Line2D([0], [0], color="#c1121f", lw=1, label="Not flooded"),
     ]
-    axes[1].legend(handles=legend_elements, loc="lower right", fontsize=12,
-                   frameon=True, fancybox=True, framealpha=0.9,
-                   facecolor="white", edgecolor="#cccccc")
+    axes[1].legend(
+        handles=legend_elements,
+        loc="lower right",
+        fontsize=12,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="#cccccc",
+    )
 
-    plt.savefig(Path(figure_path) / "flood_exposure_correction.png", dpi=dpi, bbox_inches="tight")
+    plt.savefig(
+        Path(figure_path) / "flood_exposure_correction.png",
+        dpi=dpi,
+        bbox_inches="tight",
+    )
     _show_or_close(show_figures)
 
 
@@ -486,30 +610,56 @@ def plot_vhl_flooded_map(
     """Map of vehicle-hours-lost for flood-exposed roads (bias-corrected)."""
     bins = [0, 1000, 5000, 10000, 25000, np.inf]
     labels = ["0-1K", "1K-5K", "5K-10K", "10K-25K", "25K+"]
-    gdf_vhl_flooded["vhl_class"] = pd.cut(gdf_vhl_flooded["vhl"], bins=bins, labels=labels, include_lowest=True)
+    gdf_vhl_flooded["vhl_class"] = pd.cut(
+        gdf_vhl_flooded["vhl"], bins=bins, labels=labels, include_lowest=True
+    )
 
-    linewidth_map = {"0-1K": 0.5, "1K-5K": 1.0, "5K-10K": 2.0, "10K-25K": 3.5, "25K+": 5.0}
+    linewidth_map = {
+        "0-1K": 0.5,
+        "1K-5K": 1.0,
+        "5K-10K": 2.0,
+        "10K-25K": 3.5,
+        "25K+": 5.0,
+    }
     colors = ["#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"]
 
     fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor="white")
     for i, (class_name, width) in enumerate(linewidth_map.items()):
         subset = gdf_vhl_flooded[gdf_vhl_flooded["vhl_class"] == class_name]
         if not subset.empty:
-            subset.to_crs(3857).plot(ax=ax, color=colors[i], linewidth=width, alpha=0.8, label=class_name)
+            subset.to_crs(3857).plot(
+                ax=ax, color=colors[i], linewidth=width, alpha=0.8, label=class_name
+            )
 
     cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, attribution=False)
     ax.set_aspect("equal")
     ax.axis("off")
 
-    legend_elements = [Line2D([0], [0], color=colors[i], lw=width, label=f"{class_name} vehicle hours")
-                       for i, (class_name, width) in enumerate(linewidth_map.items())]
-    ax.legend(handles=legend_elements, title="Vehicle Hours Lost", loc="upper right",
-              fontsize=9, title_fontsize=10, frameon=True, fancybox=True, shadow=True,
-              framealpha=0.9, facecolor="white", edgecolor="#cccccc")
+    legend_elements = [
+        Line2D([0], [0], color=colors[i], lw=width, label=f"{class_name} vehicle hours")
+        for i, (class_name, width) in enumerate(linewidth_map.items())
+    ]
+    ax.legend(
+        handles=legend_elements,
+        title="Vehicle Hours Lost",
+        loc="upper right",
+        fontsize=9,
+        title_fontsize=10,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="#cccccc",
+    )
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
-    plt.savefig(Path(figure_path) / "vehicle_hours_lost_map_flooded.png", dpi=dpi, bbox_inches="tight")
+    plt.savefig(
+        Path(figure_path) / "vehicle_hours_lost_map_flooded.png",
+        dpi=dpi,
+        bbox_inches="tight",
+    )
     _show_or_close(show_figures)
 
 
@@ -520,12 +670,39 @@ def plot_vhl_flooded_map(
 # Attribute columns carried over from the criticality results into the
 # per-hazard overlays
 _OVERLAY_COLS = [
-    "from_id", "to_id", "objectid", "oznaka_deo", "smer_gdf1", "kategorija",
-    "oznaka_put", "oznaka_poc", "naziv_poce", "oznaka_zav", "naziv_zavr",
-    "duzina_deo", "pocetna_st", "zavrsna_st", "stanje", "geometry", "id",
-    "passenger_cars", "buses", "light_trucks", "medium_trucks",
-    "heavy_trucks", "articulated_vehicles", "total_aadt", "road_length",
-    "speed", "fft", "edge_no", "vhl", "phl", "thl", "pkl", "tkl",
+    "from_id",
+    "to_id",
+    "objectid",
+    "oznaka_deo",
+    "smer_gdf1",
+    "kategorija",
+    "oznaka_put",
+    "oznaka_poc",
+    "naziv_poce",
+    "oznaka_zav",
+    "naziv_zavr",
+    "duzina_deo",
+    "pocetna_st",
+    "zavrsna_st",
+    "stanje",
+    "geometry",
+    "id",
+    "passenger_cars",
+    "buses",
+    "light_trucks",
+    "medium_trucks",
+    "heavy_trucks",
+    "articulated_vehicles",
+    "total_aadt",
+    "road_length",
+    "speed",
+    "fft",
+    "edge_no",
+    "vhl",
+    "phl",
+    "thl",
+    "pkl",
+    "tkl",
 ]
 
 
@@ -573,12 +750,19 @@ def calculate_wildfire_exposure(
 
     gdf_results_32634 = gdf_results.to_crs(epsg=32634)
     exposed_wildfire = DamageScanner(
-        wildfire_country, gdf_results_32634, curves=pd.DataFrame(), maxdam=pd.DataFrame()
+        wildfire_country,
+        gdf_results_32634,
+        curves=pd.DataFrame(),
+        maxdam=pd.DataFrame(),
     ).exposure(asset_type="roads", disable_progress=False, return_full=False)
 
-    exposed_wildfire["wildfire_coverage_m"] = exposed_wildfire["coverage"].apply(lambda c: sum(c))
+    exposed_wildfire["wildfire_coverage_m"] = exposed_wildfire["coverage"].apply(
+        lambda c: sum(c)
+    )
     exposed_wildfire["wildfire_coverage_pct"] = (
-        exposed_wildfire["wildfire_coverage_m"] / (exposed_wildfire["road_length"] * 1000) * 100
+        exposed_wildfire["wildfire_coverage_m"]
+        / (exposed_wildfire["road_length"] * 1000)
+        * 100
     )
     exposed_wildfire["wildfire_susc"] = 1
 
@@ -591,8 +775,11 @@ def calculate_heat_exposure(
     """Max future pavement temperature (UHI raster) per road via zonal statistics."""
     gdf_results_4326 = gdf_results.to_crs("EPSG:4326")
     stats = zonal_stats(
-        gdf_results_4326, str(pavement_temperature_path),
-        stats=["max"], all_touched=True, nodata=np.nan,
+        gdf_results_4326,
+        str(pavement_temperature_path),
+        stats=["max"],
+        all_touched=True,
+        nodata=np.nan,
     )
     exposed_heat = gdf_results_4326.copy()
     exposed_heat["max_pavement_temp"] = [s["max"] for s in stats]
@@ -621,24 +808,63 @@ def combine_hazard_exposure(
     s_heat = gdf_vhl_heat["max_pavement_temp"].groupby(level=0).max()
 
     gdf_hazards = pd.concat(
-        [gdf_results, s_depth.rename("max_depth"), s_snow.rename("dužina_sn"),
-         s_date.rename("datum_evid"), s_wildfire, s_heat],
+        [
+            gdf_results,
+            s_depth.rename("max_depth"),
+            s_snow.rename("dužina_sn"),
+            s_date.rename("datum_evid"),
+            s_wildfire,
+            s_heat,
+        ],
         axis=1,
     )
     gdf_hazards["datum_evid"] = gdf_hazards["datum_evid"].dt.strftime("%d/%m/%Y")
 
     keep_attrs = [
-        "oznaka_deo", "smer_gdf1", "kategorija", "oznaka_put", "oznaka_poc",
-        "naziv_poce", "oznaka_zav", "naziv_zavr", "duzina_deo", "pocetna_st",
-        "zavrsna_st", "stanje", "geometry", "passenger_cars", "buses",
-        "light_trucks", "medium_trucks", "heavy_trucks", "articulated_vehicles",
-        "total_aadt", "road_length", "average_time_disruption",
-        "vhl", "phl", "thl", "pkl", "tkl",
-        "max_depth", "dužina_sn", "datum_evid", "wildfire_susc", "max_pavement_temp",
+        "oznaka_deo",
+        "smer_gdf1",
+        "kategorija",
+        "oznaka_put",
+        "oznaka_poc",
+        "naziv_poce",
+        "oznaka_zav",
+        "naziv_zavr",
+        "duzina_deo",
+        "pocetna_st",
+        "zavrsna_st",
+        "stanje",
+        "geometry",
+        "passenger_cars",
+        "buses",
+        "light_trucks",
+        "medium_trucks",
+        "heavy_trucks",
+        "articulated_vehicles",
+        "total_aadt",
+        "road_length",
+        "average_time_disruption",
+        "vhl",
+        "phl",
+        "thl",
+        "pkl",
+        "tkl",
+        "max_depth",
+        "dužina_sn",
+        "datum_evid",
+        "wildfire_susc",
+        "max_pavement_temp",
     ]
     gdf_hazards = gdf_hazards[keep_attrs]
     gdf_hazards = gdf_hazards.loc[
-        gdf_hazards[["max_depth", "dužina_sn", "datum_evid", "wildfire_susc", "max_pavement_temp"]].any(axis=1)
+        gdf_hazards[
+            [
+                "max_depth",
+                "dužina_sn",
+                "datum_evid",
+                "wildfire_susc",
+                "max_pavement_temp",
+            ]
+        ].any(axis=1)
     ]
     gdf_hazards = gdf_hazards.loc[gdf_hazards["vhl"].notna()]
 
@@ -646,7 +872,9 @@ def combine_hazard_exposure(
     for col in gdf_hazards.select_dtypes(include="object").columns:
         if col == gdf_hazards.geometry.name:
             continue
-        has_non_string = gdf_hazards[col].dropna().apply(lambda x: not isinstance(x, str)).any()
+        has_non_string = (
+            gdf_hazards[col].dropna().apply(lambda x: not isinstance(x, str)).any()
+        )
         if has_non_string:
             print(f"  Mixed types in '{col}' (dtype=object) — casting to string")
             gdf_hazards[col] = gdf_hazards[col].astype(str)
@@ -681,17 +909,30 @@ def plot_hazard_comparison_grid(
     class_col = f"{column}_class"
 
     for _, (_, gdf) in datasets.items():
-        gdf[class_col] = pd.cut(gdf[column], bins=bins, labels=labels, include_lowest=True)
+        gdf[class_col] = pd.cut(
+            gdf[column], bins=bins, labels=labels, include_lowest=True
+        )
 
     bounds_3857 = country_plot.to_crs(3857).total_bounds
     figw, figh = _grid_figsize(bounds_3857, n_rows=2, n_cols=2, panel_height=6.5)
 
     fig = plt.figure(figsize=(figw, figh + 1.0), facecolor="white")
-    gs = fig.add_gridspec(3, 4, height_ratios=[1, 1, 0.05], hspace=0.08, wspace=0.04,
-                          left=0.01, right=0.99, top=0.96, bottom=0.02)
+    gs = fig.add_gridspec(
+        3,
+        4,
+        height_ratios=[1, 1, 0.05],
+        hspace=0.08,
+        wspace=0.04,
+        left=0.01,
+        right=0.99,
+        top=0.96,
+        bottom=0.02,
+    )
     axes_map = {
-        "A": fig.add_subplot(gs[0, 0:2]), "B": fig.add_subplot(gs[0, 2:4]),
-        "C": fig.add_subplot(gs[1, 0:2]), "D": fig.add_subplot(gs[1, 2:4]),
+        "A": fig.add_subplot(gs[0, 0:2]),
+        "B": fig.add_subplot(gs[0, 2:4]),
+        "C": fig.add_subplot(gs[1, 0:2]),
+        "D": fig.add_subplot(gs[1, 2:4]),
     }
     ax_legend = fig.add_subplot(gs[2, :])
 
@@ -705,25 +946,54 @@ def plot_hazard_comparison_grid(
                 subset.plot(ax=ax, color=colors[i], linewidth=width, zorder=2)
 
         ax.set_title(title, fontsize=14, fontweight="bold", pad=6)
-        ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=20, fontweight="bold",
-                verticalalignment="top", zorder=10,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+        ax.text(
+            0.05,
+            0.95,
+            letter,
+            transform=ax.transAxes,
+            fontsize=20,
+            fontweight="bold",
+            verticalalignment="top",
+            zorder=10,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+        )
 
     _set_common_extent(list(axes_map.values()), bounds_3857)
     for ax in axes_map.values():
-        cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=basemap_alpha, attribution=False)
+        cx.add_basemap(
+            ax=ax,
+            source=cx.providers.CartoDB.Positron,
+            alpha=basemap_alpha,
+            attribution=False,
+        )
         ax.set_aspect("equal")
         ax.axis("off")
 
     ax_legend.axis("off")
     legend_elements = [
-        Line2D([0], [0], color=colors[i], lw=width * 1.5, label=f"{class_name} {legend_unit}")
+        Line2D(
+            [0],
+            [0],
+            color=colors[i],
+            lw=width * 1.5,
+            label=f"{class_name} {legend_unit}",
+        )
         for i, (class_name, width) in enumerate(linewidth_map.items())
     ]
-    ax_legend.legend(handles=legend_elements, title=legend_title, loc="center",
-                     fontsize=10, title_fontsize=11, frameon=True, fancybox=True,
-                     shadow=True, framealpha=0.9, facecolor="white", ncols=5,
-                     edgecolor="#cccccc")
+    ax_legend.legend(
+        handles=legend_elements,
+        title=legend_title,
+        loc="center",
+        fontsize=10,
+        title_fontsize=11,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        facecolor="white",
+        ncols=5,
+        edgecolor="#cccccc",
+    )
 
     plt.savefig(Path(figure_path) / file_name, dpi=dpi, bbox_inches="tight")
     _show_or_close(show_figures)
@@ -748,35 +1018,50 @@ def plot_all_hazard_comparisons(
     }
 
     plot_hazard_comparison_grid(
-        datasets, column="vhl",
+        datasets,
+        column="vhl",
         bins=[0, 1000, 5000, 10000, np.inf],
         labels=["0-1K", "1K-5K", "5K-10K", "10K+"],
         linewidth_map={"0-1K": 1.5, "1K-5K": 2.0, "5K-10K": 3.5, "10K+": 5.0},
-        legend_title="Vehicle Hours Lost", legend_unit="vehicle hours",
-        country_plot=country_plot, figure_path=figure_path,
-        file_name="vhl_hazards_comparison.png", basemap_alpha=0.4, dpi=dpi,
+        legend_title="Vehicle Hours Lost",
+        legend_unit="vehicle hours",
+        country_plot=country_plot,
+        figure_path=figure_path,
+        file_name="vhl_hazards_comparison.png",
+        basemap_alpha=0.4,
+        dpi=dpi,
         show_figures=show_figures,
     )
 
     plot_hazard_comparison_grid(
-        datasets, column="phl",
+        datasets,
+        column="phl",
         bins=[0, 1000, 5000, 10000, np.inf],
         labels=["0-1K", "1K-5K", "5K-10K", "10K+"],
         linewidth_map={"0-1K": 1.5, "1K-5K": 2.0, "5K-10K": 2.5, "10K+": 3.0},
-        legend_title="Passenger Hours Lost", legend_unit="hours",
-        country_plot=country_plot, figure_path=figure_path,
-        file_name="phl_hazards_comparison.png", basemap_alpha=1.0, dpi=dpi,
+        legend_title="Passenger Hours Lost",
+        legend_unit="hours",
+        country_plot=country_plot,
+        figure_path=figure_path,
+        file_name="phl_hazards_comparison.png",
+        basemap_alpha=1.0,
+        dpi=dpi,
         show_figures=show_figures,
     )
 
     plot_hazard_comparison_grid(
-        datasets, column="tkl",
+        datasets,
+        column="tkl",
         bins=[10000, 25000, 50000, 100000, np.inf],
         labels=["10K-25K", "25K-50K", "50K-100K", "100K+"],
         linewidth_map={"10K-25K": 1.5, "25K-50K": 2.0, "50K-100K": 2.5, "100K+": 3.0},
-        legend_title="Tonnage Kilometers Lost", legend_unit="ton-km",
-        country_plot=country_plot, figure_path=figure_path,
-        file_name="tkl_hazards_comparison.png", basemap_alpha=1.0, dpi=dpi,
+        legend_title="Tonnage Kilometers Lost",
+        legend_unit="ton-km",
+        country_plot=country_plot,
+        figure_path=figure_path,
+        file_name="tkl_hazards_comparison.png",
+        basemap_alpha=1.0,
+        dpi=dpi,
         show_figures=show_figures,
     )
 
@@ -801,8 +1086,12 @@ def print_hazard_analysis_summary(
     print(f"  Total PKL: {gdf_results['pkl'].sum():,.0f} passenger km")
     print(f"  Total TKL: {gdf_results['tkl'].sum():,.0f} ton km")
 
-    gdf_vhl_snowdrift = gdf_vhl_snowdrift.rename(columns={"oznaka_deo_left": "oznaka_deo"})
-    gdf_vhl_landslides = gdf_vhl_landslides.rename(columns={"oznaka_deo_left": "oznaka_deo"})
+    gdf_vhl_snowdrift = gdf_vhl_snowdrift.rename(
+        columns={"oznaka_deo_left": "oznaka_deo"}
+    )
+    gdf_vhl_landslides = gdf_vhl_landslides.rename(
+        columns={"oznaka_deo_left": "oznaka_deo"}
+    )
 
     hazard_datasets = {
         "Floods": gdf_vhl_flooded,
@@ -825,24 +1114,48 @@ def print_hazard_analysis_summary(
         print(f"\n{'─' * 50}\n{hazard_name.upper()}\n{'─' * 50}")
         print(f"Exposed road segments: {len(gdf):,}")
         print(gdf["phl"].describe().round(2))
-        gdf["phl_class"] = pd.cut(gdf["phl"], bins=bins_phl, labels=labels_phl, include_lowest=True)
+        gdf["phl_class"] = pd.cut(
+            gdf["phl"], bins=bins_phl, labels=labels_phl, include_lowest=True
+        )
         phl_counts = gdf["phl_class"].value_counts().sort_index()
-        phl_pcts = (gdf["phl_class"].value_counts(normalize=True).sort_index() * 100).round(1)
+        phl_pcts = (
+            gdf["phl_class"].value_counts(normalize=True).sort_index() * 100
+        ).round(1)
         for label in labels_phl:
             print(f"  {label}: {phl_counts.get(label, 0)} ({phl_pcts.get(label, 0)}%)")
         if "kategorija" in gdf.columns:
-            road_summary = gdf.groupby("kategorija")["phl"].agg(["count", "sum", "mean", "max"]).round(2)
+            road_summary = (
+                gdf.groupby("kategorija")["phl"]
+                .agg(["count", "sum", "mean", "max"])
+                .round(2)
+            )
             road_summary.columns = ["Count", "Total PHL", "Mean PHL", "Max PHL"]
             print(road_summary.sort_values("Total PHL", ascending=False))
-        cols = [c for c in ["oznaka_deo", "kategorija", "naziv_poce", "naziv_zavr", "total_aadt", "phl"] if c in gdf.columns]
+        cols = [
+            c
+            for c in [
+                "oznaka_deo",
+                "kategorija",
+                "naziv_poce",
+                "naziv_zavr",
+                "total_aadt",
+                "phl",
+            ]
+            if c in gdf.columns
+        ]
         print(gdf.nlargest(5, "phl")[cols].to_string())
-        phl_summary.append({
-            "Hazard": hazard_name, "Exposed Segments": len(gdf),
-            "Total PHL": gdf["phl"].sum(), "Mean PHL": gdf["phl"].mean(),
-            "Median PHL": gdf["phl"].median(), "Max PHL": gdf["phl"].max(),
-            "Segments >25K": len(gdf[gdf["phl"] >= 25000]),
-            "Segments >10K": len(gdf[gdf["phl"] >= 10000]),
-        })
+        phl_summary.append(
+            {
+                "Hazard": hazard_name,
+                "Exposed Segments": len(gdf),
+                "Total PHL": gdf["phl"].sum(),
+                "Mean PHL": gdf["phl"].mean(),
+                "Median PHL": gdf["phl"].median(),
+                "Max PHL": gdf["phl"].max(),
+                "Segments >25K": len(gdf[gdf["phl"] >= 25000]),
+                "Segments >10K": len(gdf[gdf["phl"] >= 10000]),
+            }
+        )
     print("\n" + "─" * 50 + "\nPHL HAZARD COMPARISON SUMMARY\n" + "─" * 50)
     print(pd.DataFrame(phl_summary).to_string(index=False))
 
@@ -855,49 +1168,82 @@ def print_hazard_analysis_summary(
         print(f"\n{'─' * 50}\n{hazard_name.upper()}\n{'─' * 50}")
         print(f"Exposed road segments: {len(gdf):,}")
         print(gdf["tkl"].describe().round(2))
-        gdf["tkl_class"] = pd.cut(gdf["tkl"], bins=bins_tkl, labels=labels_tkl, include_lowest=True)
+        gdf["tkl_class"] = pd.cut(
+            gdf["tkl"], bins=bins_tkl, labels=labels_tkl, include_lowest=True
+        )
         tkl_counts = gdf["tkl_class"].value_counts().sort_index()
-        tkl_pcts = (gdf["tkl_class"].value_counts(normalize=True).sort_index() * 100).round(1)
+        tkl_pcts = (
+            gdf["tkl_class"].value_counts(normalize=True).sort_index() * 100
+        ).round(1)
         for label in labels_tkl:
             print(f"  {label}: {tkl_counts.get(label, 0)} ({tkl_pcts.get(label, 0)}%)")
         if "kategorija" in gdf.columns:
-            road_summary = gdf.groupby("kategorija")["tkl"].agg(["count", "sum", "mean", "max"]).round(2)
+            road_summary = (
+                gdf.groupby("kategorija")["tkl"]
+                .agg(["count", "sum", "mean", "max"])
+                .round(2)
+            )
             road_summary.columns = ["Count", "Total TKL", "Mean TKL", "Max TKL"]
             print(road_summary.sort_values("Total TKL", ascending=False))
-        cols = [c for c in ["oznaka_deo", "kategorija", "naziv_poce", "naziv_zavr", "total_aadt", "tkl"] if c in gdf.columns]
+        cols = [
+            c
+            for c in [
+                "oznaka_deo",
+                "kategorija",
+                "naziv_poce",
+                "naziv_zavr",
+                "total_aadt",
+                "tkl",
+            ]
+            if c in gdf.columns
+        ]
         print(gdf.nlargest(5, "tkl")[cols].to_string())
-        tkl_summary.append({
-            "Hazard": hazard_name, "Exposed Segments": len(gdf),
-            "Total TKL": gdf["tkl"].sum(), "Mean TKL": gdf["tkl"].mean(),
-            "Median TKL": gdf["tkl"].median(), "Max TKL": gdf["tkl"].max(),
-            "Segments >250K": len(gdf[gdf["tkl"] >= 250000]),
-            "Segments >100K": len(gdf[gdf["tkl"] >= 100000]),
-        })
+        tkl_summary.append(
+            {
+                "Hazard": hazard_name,
+                "Exposed Segments": len(gdf),
+                "Total TKL": gdf["tkl"].sum(),
+                "Mean TKL": gdf["tkl"].mean(),
+                "Median TKL": gdf["tkl"].median(),
+                "Max TKL": gdf["tkl"].max(),
+                "Segments >250K": len(gdf[gdf["tkl"] >= 250000]),
+                "Segments >100K": len(gdf[gdf["tkl"] >= 100000]),
+            }
+        )
     print("\n" + "─" * 50 + "\nTKL HAZARD COMPARISON SUMMARY\n" + "─" * 50)
     print(pd.DataFrame(tkl_summary).to_string(index=False))
 
     # --- THL & PKL ---
-    for metric, label, threshold in [("thl", "TONNAGE HOURS LOST (THL)", 10000),
-                                     ("pkl", "PASSENGER KILOMETERS LOST (PKL)", 250000)]:
+    for metric, label, threshold in [
+        ("thl", "TONNAGE HOURS LOST (THL)", 10000),
+        ("pkl", "PASSENGER KILOMETERS LOST (PKL)", 250000),
+    ]:
         print("\n" + "=" * 70)
         print(f"{label} BY HAZARD")
         print("=" * 70)
         summary = []
         for hazard_name, gdf in hazard_datasets.items():
-            summary.append({
-                "Hazard": hazard_name, "Exposed Segments": len(gdf),
-                f"Total {metric.upper()}": gdf[metric].sum(),
-                f"Mean {metric.upper()}": gdf[metric].mean(),
-                f"Max {metric.upper()}": gdf[metric].max(),
-                f"Segments >{threshold // 1000}K": len(gdf[gdf[metric] >= threshold]),
-            })
+            summary.append(
+                {
+                    "Hazard": hazard_name,
+                    "Exposed Segments": len(gdf),
+                    f"Total {metric.upper()}": gdf[metric].sum(),
+                    f"Mean {metric.upper()}": gdf[metric].mean(),
+                    f"Max {metric.upper()}": gdf[metric].max(),
+                    f"Segments >{threshold // 1000}K": len(
+                        gdf[gdf[metric] >= threshold]
+                    ),
+                }
+            )
         print(pd.DataFrame(summary).to_string(index=False))
 
     # --- Overlap analysis ---
     print("\n" + "=" * 70)
     print("OVERLAP ANALYSIS - MULTI-HAZARD EXPOSURE")
     print("=" * 70)
-    seg_sets = {name: set(gdf["oznaka_deo"].dropna()) for name, gdf in hazard_datasets.items()}
+    seg_sets = {
+        name: set(gdf["oznaka_deo"].dropna()) for name, gdf in hazard_datasets.items()
+    }
     for name, s in seg_sets.items():
         print(f"Total unique segments exposed to {name}: {len(s)}")
     all_names = list(seg_sets.keys())
@@ -911,13 +1257,14 @@ def print_hazard_analysis_summary(
 
     print("\nDual exposure (all pairs):")
     for i, n1 in enumerate(all_names):
-        for n2 in all_names[i + 1:]:
+        for n2 in all_names[i + 1 :]:
             others = set().union(*(seg_sets[n] for n in all_names if n not in (n1, n2)))
             print(f"  {n1} AND {n2}: {len(seg_sets[n1] & seg_sets[n2] - others)}")
 
     print(f"\nAll four hazards: {len(set.intersection(*seg_sets.values()))}")
 
     from collections import Counter
+
     segment_hazard_count = Counter()
     for seg in all_exposed:
         n = sum(1 for s in seg_sets.values() if seg in s)
@@ -938,30 +1285,70 @@ def print_hazard_analysis_summary(
     print("\nTotal exposed PKL as % of national daily:")
     for name, gdf in hazard_datasets.items():
         total = gdf["pkl"].sum()
-        print(f"  {name}: {total:,.0f} PKL ({total / national_pkm_daily * 100:.1f}% of national daily)")
+        print(
+            f"  {name}: {total:,.0f} PKL ({total / national_pkm_daily * 100:.1f}% of national daily)"
+        )
     print("\nTotal exposed TKL as % of national daily:")
     for name, gdf in hazard_datasets.items():
         total = gdf["tkl"].sum()
-        print(f"  {name}: {total:,.0f} TKL ({total / national_tkm_daily * 100:.1f}% of national daily)")
+        print(
+            f"  {name}: {total:,.0f} TKL ({total / national_tkm_daily * 100:.1f}% of national daily)"
+        )
 
     # --- Key examples ---
     print("\n" + "=" * 70)
     print("KEY EXAMPLES FOR TEXT")
     print("=" * 70)
     for hazard_name, gdf in hazard_datasets.items():
-        print(f"\n{'─' * 50}\n{hazard_name.upper()} - TOP CRITICAL SEGMENTS\n{'─' * 50}")
+        print(
+            f"\n{'─' * 50}\n{hazard_name.upper()} - TOP CRITICAL SEGMENTS\n{'─' * 50}"
+        )
         print("\nTop 3 by Passenger Hours Lost:")
-        cols = [c for c in ["oznaka_deo", "kategorija", "oznaka_put", "naziv_poce", "naziv_zavr", "total_aadt", "phl", "pkl"] if c in gdf.columns]
+        cols = [
+            c
+            for c in [
+                "oznaka_deo",
+                "kategorija",
+                "oznaka_put",
+                "naziv_poce",
+                "naziv_zavr",
+                "total_aadt",
+                "phl",
+                "pkl",
+            ]
+            if c in gdf.columns
+        ]
         for _, row in gdf.nlargest(3, "phl")[cols].iterrows():
-            print(f"  {row.get('oznaka_put', 'N/A')} ({row.get('kategorija', 'N/A')}): "
-                  f"{row.get('naziv_poce', 'N/A')} → {row.get('naziv_zavr', 'N/A')}")
-            print(f"    AADT: {row.get('total_aadt', 0):,.0f}, PHL: {row['phl']:,.0f}, PKL: {row.get('pkl', 0):,.0f}")
+            print(
+                f"  {row.get('oznaka_put', 'N/A')} ({row.get('kategorija', 'N/A')}): "
+                f"{row.get('naziv_poce', 'N/A')} → {row.get('naziv_zavr', 'N/A')}"
+            )
+            print(
+                f"    AADT: {row.get('total_aadt', 0):,.0f}, PHL: {row['phl']:,.0f}, PKL: {row.get('pkl', 0):,.0f}"
+            )
         print("\nTop 3 by Tonnage Kilometers Lost:")
-        cols = [c for c in ["oznaka_deo", "kategorija", "oznaka_put", "naziv_poce", "naziv_zavr", "total_aadt", "thl", "tkl"] if c in gdf.columns]
+        cols = [
+            c
+            for c in [
+                "oznaka_deo",
+                "kategorija",
+                "oznaka_put",
+                "naziv_poce",
+                "naziv_zavr",
+                "total_aadt",
+                "thl",
+                "tkl",
+            ]
+            if c in gdf.columns
+        ]
         for _, row in gdf.nlargest(3, "tkl")[cols].iterrows():
-            print(f"  {row.get('oznaka_put', 'N/A')} ({row.get('kategorija', 'N/A')}): "
-                  f"{row.get('naziv_poce', 'N/A')} → {row.get('naziv_zavr', 'N/A')}")
-            print(f"    AADT: {row.get('total_aadt', 0):,.0f}, THL: {row.get('thl', 0):,.0f}, TKL: {row['tkl']:,.0f}")
+            print(
+                f"  {row.get('oznaka_put', 'N/A')} ({row.get('kategorija', 'N/A')}): "
+                f"{row.get('naziv_poce', 'N/A')} → {row.get('naziv_zavr', 'N/A')}"
+            )
+            print(
+                f"    AADT: {row.get('total_aadt', 0):,.0f}, THL: {row.get('thl', 0):,.0f}, TKL: {row['tkl']:,.0f}"
+            )
 
     # --- Master summary table ---
     print("\n" + "=" * 70)
@@ -969,20 +1356,27 @@ def print_hazard_analysis_summary(
     print("=" * 70)
     master = []
     for name, gdf in hazard_datasets.items():
-        master.append({
-            "Hazard": name, "Segments": len(gdf),
-            "Total PHL": f"{gdf['phl'].sum():,.0f}", "Total THL": f"{gdf['thl'].sum():,.0f}",
-            "Total PKL": f"{gdf['pkl'].sum():,.0f}", "Total TKL": f"{gdf['tkl'].sum():,.0f}",
-            "Max PHL": f"{gdf['phl'].max():,.0f}", "Max TKL": f"{gdf['tkl'].max():,.0f}",
-            "PHL >25K": len(gdf[gdf["phl"] >= 25000]),
-            "TKL >250K": len(gdf[gdf["tkl"] >= 250000]),
-        })
+        master.append(
+            {
+                "Hazard": name,
+                "Segments": len(gdf),
+                "Total PHL": f"{gdf['phl'].sum():,.0f}",
+                "Total THL": f"{gdf['thl'].sum():,.0f}",
+                "Total PKL": f"{gdf['pkl'].sum():,.0f}",
+                "Total TKL": f"{gdf['tkl'].sum():,.0f}",
+                "Max PHL": f"{gdf['phl'].max():,.0f}",
+                "Max TKL": f"{gdf['tkl'].max():,.0f}",
+                "PHL >25K": len(gdf[gdf["phl"] >= 25000]),
+                "TKL >250K": len(gdf[gdf["tkl"] >= 250000]),
+            }
+        )
     print(pd.DataFrame(master).to_string(index=False))
 
 
 # ---------------------------------------------------------------------------
 # 5a — Multi-hazard exposure count (binary yes/no per hazard)
 # ---------------------------------------------------------------------------
+
 
 def flag_future_precipitation(
     gdf: gpd.GeoDataFrame,
@@ -1046,7 +1440,9 @@ def summarize_hazard_counts(
         print(f"  {k} hazard(s): {c:6d}  ({c / n * 100:5.1f}% of network)")
 
     exposed = int((gdf[count_col] >= 1).sum())
-    print(f"\nRoads exposed to at least one hazard: {exposed} ({exposed / n * 100:.1f}% of network)")
+    print(
+        f"\nRoads exposed to at least one hazard: {exposed} ({exposed / n * 100:.1f}% of network)"
+    )
 
 
 def plot_hazard_count_map(
@@ -1062,8 +1458,16 @@ def plot_hazard_count_map(
     Segments with no hazard are drawn faintly in grey; exposed segments use a
     sequential yellow→red ramp with increasing line width per hazard count.
     """
-    colors = ["#ffffb2", "#fed976", "#feb24c", "#fd8d3c", "#f03b20", "#bd0026",
-              "#7a0177", "#49006a"]
+    colors = [
+        "#ffffb2",
+        "#fed976",
+        "#feb24c",
+        "#fd8d3c",
+        "#f03b20",
+        "#bd0026",
+        "#7a0177",
+        "#49006a",
+    ]
     widths = {1: 0.8, 2: 1.2, 3: 1.8, 4: 2.5, 5: 3.2, 6: 4.0, 7: 4.6, 8: 5.2}
 
     g = gdf.to_crs(3857)
@@ -1076,24 +1480,45 @@ def plot_hazard_count_map(
     for k in range(1, n_hazards + 1):
         subset = g[g[count_col] == k]
         if not subset.empty:
-            subset.plot(ax=ax, color=colors[k - 1], linewidth=widths[k], alpha=0.9, zorder=2 + k)
+            subset.plot(
+                ax=ax, color=colors[k - 1], linewidth=widths[k], alpha=0.9, zorder=2 + k
+            )
 
-    cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
+    cx.add_basemap(
+        ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False
+    )
     ax.set_aspect("equal")
     ax.axis("off")
 
     legend_elements = [
-        Line2D([0], [0], color=colors[k - 1], lw=widths[k],
-               label=f"{k} hazard" + ("s" if k > 1 else ""))
+        Line2D(
+            [0],
+            [0],
+            color=colors[k - 1],
+            lw=widths[k],
+            label=f"{k} hazard" + ("s" if k > 1 else ""),
+        )
         for k in range(1, n_hazards + 1)
     ]
-    ax.legend(handles=legend_elements, title="Number of hazards", loc="upper right",
-              fontsize=10, title_fontsize=11, frameon=True, fancybox=True, shadow=True,
-              framealpha=0.9, facecolor="white", edgecolor="#cccccc")
+    ax.legend(
+        handles=legend_elements,
+        title="Number of hazards",
+        loc="upper right",
+        fontsize=10,
+        title_fontsize=11,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="#cccccc",
+    )
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
-    plt.savefig(Path(figure_path) / "hazard_count_map.png", dpi=dpi, bbox_inches="tight")
+    plt.savefig(
+        Path(figure_path) / "hazard_count_map.png", dpi=dpi, bbox_inches="tight"
+    )
     _show_or_close(show_figures)
 
 
@@ -1105,21 +1530,36 @@ def plot_hazard_count_map(
 IMPACT_BINS = [0.167, 0.333, 0.5, 0.667, 1.0, np.inf]
 IMPACT_LABELS = ["10-20 min", "20-30 min", "30-40 min", "40-60 min", "60+ min"]
 IMPACT_COLORS = ["#fcbba1", "#fc9272", "#ef3b2c", "#cb181d", "#a50f15"]
-IMPACT_WIDTHS = {"10-20 min": 1.0, "20-30 min": 1.5, "30-40 min": 2.0, "40-60 min": 2.5, "60+ min": 3.0}
+IMPACT_WIDTHS = {
+    "10-20 min": 1.0,
+    "20-30 min": 1.5,
+    "30-40 min": 2.0,
+    "40-60 min": 2.5,
+    "60+ min": 3.0,
+}
 
 
 def load_basins(basins_csv_path: Path, basins_shapefile_path: Path) -> gpd.GeoDataFrame:
     """Merge basin-level flood statistics with HydroBASINS geometries."""
     basins = pd.read_csv(basins_csv_path)
     all_basins = gpd.read_file(basins_shapefile_path)
-    return gpd.GeoDataFrame(basins.merge(all_basins, left_on="basinID", right_on="HYBAS_ID"))
+    return gpd.GeoDataFrame(
+        basins.merge(all_basins, left_on="basinID", right_on="HYBAS_ID")
+    )
 
 
-def plot_basin_water_depths(basins: gpd.GeoDataFrame, figure_path: Path, dpi: int = 300, show_figures: bool = True) -> None:
+def plot_basin_water_depths(
+    basins: gpd.GeoDataFrame,
+    figure_path: Path,
+    dpi: int = 300,
+    show_figures: bool = True,
+) -> None:
     """Map of mean water depth per basin in five depth classes."""
     bins = [0, 1, 2, 3, 4, np.inf]
     labels = ["0-1m", "1-2m", "2-3m", "3-4m", "4m+"]
-    basins["depth_class"] = pd.cut(basins["mean water depth (m)"], bins=bins, labels=labels, include_lowest=True)
+    basins["depth_class"] = pd.cut(
+        basins["mean water depth (m)"], bins=bins, labels=labels, include_lowest=True
+    )
 
     colors = ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"]
     fig, ax = plt.subplots(1, 1, figsize=(20, 8), facecolor="white")
@@ -1128,27 +1568,60 @@ def plot_basin_water_depths(basins: gpd.GeoDataFrame, figure_path: Path, dpi: in
     for category, color in zip(labels, colors):
         category_data = basins_mercator[basins_mercator["depth_class"] == category]
         if len(category_data) > 0:
-            category_data.plot(ax=ax, color=color, linewidth=0.1, edgecolor="navy", alpha=0.8, legend=False)
+            category_data.plot(
+                ax=ax,
+                color=color,
+                linewidth=0.1,
+                edgecolor="navy",
+                alpha=0.8,
+                legend=False,
+            )
 
-    cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
+    cx.add_basemap(
+        ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False
+    )
     ax.set_aspect("equal")
     ax.axis("off")
 
-    legend_elements = [Patch(facecolor=colors[i], label=f"{labels[i]} depth", edgecolor="navy", linewidth=0.5)
-                       for i in range(len(labels))]
-    ax.legend(handles=legend_elements, title="Mean Water Depth", loc="upper right",
-              fontsize=10, title_fontsize=12, frameon=True, fancybox=True, shadow=True,
-              framealpha=0.9, facecolor="white", edgecolor="#cccccc")
+    legend_elements = [
+        Patch(
+            facecolor=colors[i],
+            label=f"{labels[i]} depth",
+            edgecolor="navy",
+            linewidth=0.5,
+        )
+        for i in range(len(labels))
+    ]
+    ax.legend(
+        handles=legend_elements,
+        title="Mean Water Depth",
+        loc="upper right",
+        fontsize=10,
+        title_fontsize=12,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="#cccccc",
+    )
 
     total_basins = len(basins)
     mean_depth = basins["mean water depth (m)"].mean()
-    ax.text(0.02, 0.02, f"Total Basins: {total_basins:,} | Average Depth: {mean_depth:.2f}m",
-            transform=ax.transAxes, fontsize=11,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    ax.text(
+        0.02,
+        0.02,
+        f"Total Basins: {total_basins:,} | Average Depth: {mean_depth:.2f}m",
+        transform=ax.transAxes,
+        fontsize=11,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
-    plt.savefig(Path(figure_path) / "basin_water_depths.png", dpi=dpi, bbox_inches="tight")
+    plt.savefig(
+        Path(figure_path) / "basin_water_depths.png", dpi=dpi, bbox_inches="tight"
+    )
     _show_or_close(show_figures)
 
 
@@ -1157,10 +1630,13 @@ def load_base_network(network_parquet_path: Path) -> gpd.GeoDataFrame:
     base_network = gpd.read_parquet(network_parquet_path)
 
     edges = base_network.reindex(
-        ["from_id", "to_id"] + [x for x in list(base_network.columns) if x not in ["from_id", "to_id"]],
+        ["from_id", "to_id"]
+        + [x for x in list(base_network.columns) if x not in ["from_id", "to_id"]],
         axis=1,
     )
-    graph = ig.Graph.TupleList(edges.itertuples(index=False), edge_attrs=list(edges.columns)[2:], directed=True)
+    graph = ig.Graph.TupleList(
+        edges.itertuples(index=False), edge_attrs=list(edges.columns)[2:], directed=True
+    )
     graph.vs["id"] = graph.vs["name"]
     graph = graph.connected_components().giant()
     edges = edges[edges["id"].isin(graph.es["id"])]
@@ -1188,7 +1664,9 @@ def calculate_service_criticality(
         scenario_outcome = save_new_results[basin]["scenario_outcome"]
         if isinstance(scenario_outcome, pd.DataFrame):
             subset_edges = base_network.loc[
-                base_network.osm_id.astype(str).isin(save_new_results[basin]["real_edges_to_remove"])
+                base_network.osm_id.astype(str).isin(
+                    save_new_results[basin]["real_edges_to_remove"]
+                )
             ].copy()
             subset_edges["travel_time_impact"] = (
                 scenario_outcome.loc[scenario_outcome.Delta > 0]
@@ -1198,7 +1676,15 @@ def calculate_service_criticality(
             collect_removed_edges.append(subset_edges)
 
     exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[
-        ["osm_id", "from_id", "to_id", "highway", "exposed", "geometry", "travel_time_impact"]
+        [
+            "osm_id",
+            "from_id",
+            "to_id",
+            "highway",
+            "exposed",
+            "geometry",
+            "travel_time_impact",
+        ]
     ]
     exposed_edges = (
         exposed_edges.loc[exposed_edges.exposed]
@@ -1206,13 +1692,18 @@ def calculate_service_criticality(
         .set_crs(3857, allow_override=True)
     )
     exposed_edges["travel_time_impact"] = np.where(
-        np.isinf(exposed_edges["travel_time_impact"]), 1, exposed_edges["travel_time_impact"]
+        np.isinf(exposed_edges["travel_time_impact"]),
+        1,
+        exposed_edges["travel_time_impact"],
     )
     exposed_edges = exposed_edges.to_crs(3857)
     exposed_edges = exposed_edges[exposed_edges["travel_time_impact"] >= 0.167].copy()
 
     exposed_edges["impact_class"] = pd.cut(
-        exposed_edges["travel_time_impact"], bins=IMPACT_BINS, labels=IMPACT_LABELS, include_lowest=True
+        exposed_edges["travel_time_impact"],
+        bins=IMPACT_BINS,
+        labels=IMPACT_LABELS,
+        include_lowest=True,
     )
     return exposed_edges
 
@@ -1231,7 +1722,11 @@ def print_delay_category_counts(
     if exposed_edges is None or len(exposed_edges) == 0:
         print("  (no exposed edges with >= 10 min delay)")
         return
-    counts = exposed_edges["impact_class"].value_counts().reindex(IMPACT_LABELS, fill_value=0)
+    counts = (
+        exposed_edges["impact_class"]
+        .value_counts()
+        .reindex(IMPACT_LABELS, fill_value=0)
+    )
     total = int(counts.sum())
     for lbl in IMPACT_LABELS:
         c = int(counts[lbl])
@@ -1240,7 +1735,9 @@ def print_delay_category_counts(
     print(f"  {'Total':10s}: {total:6d}")
 
     # Aggregate stats across all roads with a > 10 min delay (all exposed edges).
-    delays_min = pd.to_numeric(exposed_edges["travel_time_impact"], errors="coerce") * 60
+    delays_min = (
+        pd.to_numeric(exposed_edges["travel_time_impact"], errors="coerce") * 60
+    )
     mid_labels = ["20-30 min", "30-40 min", "40-60 min"]
     mid_count = int(counts[mid_labels].sum())
     mid_share = mid_count / total * 100 if total else 0.0
@@ -1266,19 +1763,42 @@ def plot_service_criticality(
     for i, (category, color) in enumerate(zip(IMPACT_LABELS, IMPACT_COLORS)):
         category_data = edges_mercator[edges_mercator["impact_class"] == category]
         if len(category_data) > 0:
-            category_data.plot(ax=ax, color=color, linewidth=IMPACT_WIDTHS[category],
-                               alpha=0.9, zorder=5 + i)
+            category_data.plot(
+                ax=ax,
+                color=color,
+                linewidth=IMPACT_WIDTHS[category],
+                alpha=0.9,
+                zorder=5 + i,
+            )
 
-    cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False)
+    cx.add_basemap(
+        ax=ax, source=cx.providers.CartoDB.Positron, alpha=0.4, attribution=False
+    )
     ax.set_aspect("equal")
     ax.axis("off")
 
-    legend_elements = [Patch(facecolor=IMPACT_COLORS[i], label=f"{IMPACT_LABELS[i]} delay",
-                             edgecolor="darkred", linewidth=0.5)
-                       for i in range(len(IMPACT_LABELS))]
-    ax.legend(handles=legend_elements, title="Increased Travel Time", loc="upper right",
-              fontsize=10, title_fontsize=12, frameon=True, fancybox=True, shadow=True,
-              framealpha=0.9, facecolor="white", edgecolor="#cccccc")
+    legend_elements = [
+        Patch(
+            facecolor=IMPACT_COLORS[i],
+            label=f"{IMPACT_LABELS[i]} delay",
+            edgecolor="darkred",
+            linewidth=0.5,
+        )
+        for i in range(len(IMPACT_LABELS))
+    ]
+    ax.legend(
+        handles=legend_elements,
+        title="Increased Travel Time",
+        loc="upper right",
+        fontsize=10,
+        title_fontsize=12,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="#cccccc",
+    )
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.88, bottom=0.08, left=0.02, right=0.94)
@@ -1342,14 +1862,26 @@ def calculate_agri_criticality(
             continue
 
         exposed_edges = gpd.GeoDataFrame(pd.concat(collect_removed_edges))[
-            ["osm_id", "from_id", "to_id", "highway", "exposed", "geometry", "travel_time_impact"]
+            [
+                "osm_id",
+                "from_id",
+                "to_id",
+                "highway",
+                "exposed",
+                "geometry",
+                "travel_time_impact",
+            ]
         ]
         exposed_edges = exposed_edges.loc[exposed_edges.exposed].reset_index(drop=True)
         exposed_edges = exposed_edges.set_crs(3857, allow_override=True)
         exposed_edges["travel_time_impact"] = np.where(
-            np.isinf(exposed_edges["travel_time_impact"]), 1, exposed_edges["travel_time_impact"]
+            np.isinf(exposed_edges["travel_time_impact"]),
+            1,
+            exposed_edges["travel_time_impact"],
         )
-        exposed_edges = exposed_edges[exposed_edges["travel_time_impact"] >= 0.167].copy()
+        exposed_edges = exposed_edges[
+            exposed_edges["travel_time_impact"] >= 0.167
+        ].copy()
         if len(exposed_edges) == 0:
             print(f"  No edges with impact >= 10 min for {sink_type}")
             exposed_edges_by_type[sink_type] = None
@@ -1357,7 +1889,10 @@ def calculate_agri_criticality(
 
         exposed_edges = exposed_edges.to_crs(3857)
         exposed_edges["impact_class"] = pd.cut(
-            exposed_edges["travel_time_impact"], bins=IMPACT_BINS, labels=IMPACT_LABELS, include_lowest=True
+            exposed_edges["travel_time_impact"],
+            bins=IMPACT_BINS,
+            labels=IMPACT_LABELS,
+            include_lowest=True,
         )
         exposed_edges_by_type[sink_type] = exposed_edges
         print(f"  {len(exposed_edges)} edges")
@@ -1365,9 +1900,14 @@ def calculate_agri_criticality(
     return exposed_edges_by_type
 
 
-def _plot_impact_panel(ax: Any, gdf: gpd.GeoDataFrame | None, letter: str,
-                       base_network: gpd.GeoDataFrame, basemap_alpha: float = 1.0,
-                       bounds_3857=None) -> None:
+def _plot_impact_panel(
+    ax: Any,
+    gdf: gpd.GeoDataFrame | None,
+    letter: str,
+    base_network: gpd.GeoDataFrame,
+    basemap_alpha: float = 1.0,
+    bounds_3857=None,
+) -> None:
     """One panel of exposed edges by impact class over the muted base network."""
     base_network.plot(ax=ax, linewidth=0.1, color="lightgrey", alpha=0.5)
 
@@ -1375,15 +1915,30 @@ def _plot_impact_panel(ax: Any, gdf: gpd.GeoDataFrame | None, letter: str,
         for category, color in zip(IMPACT_LABELS, IMPACT_COLORS):
             subset = gdf[gdf["impact_class"] == category]
             if len(subset) > 0:
-                subset.plot(ax=ax, color=color, linewidth=IMPACT_WIDTHS[category], alpha=0.9)
+                subset.plot(
+                    ax=ax, color=color, linewidth=IMPACT_WIDTHS[category], alpha=0.9
+                )
 
     ax.axis("off")
-    ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=20, fontweight="bold",
-            verticalalignment="top", zorder=10,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    ax.text(
+        0.05,
+        0.95,
+        letter,
+        transform=ax.transAxes,
+        fontsize=20,
+        fontweight="bold",
+        verticalalignment="top",
+        zorder=10,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
     if bounds_3857 is not None:
         _set_common_extent(ax, bounds_3857)
-    cx.add_basemap(ax=ax, source=cx.providers.CartoDB.Positron, alpha=basemap_alpha, attribution=False)
+    cx.add_basemap(
+        ax=ax,
+        source=cx.providers.CartoDB.Positron,
+        alpha=basemap_alpha,
+        attribution=False,
+    )
     ax.set_aspect("equal")
 
 
@@ -1401,18 +1956,53 @@ def plot_agri_criticality_3x1(
     figw, figh = _grid_figsize(bounds_3857, n_rows=1, n_cols=3, panel_height=6.0)
 
     fig, axes = plt.subplots(1, 3, figsize=(figw, figh + 0.9))
-    fig.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.9 / (figh + 0.9), wspace=0.02)
+    fig.subplots_adjust(
+        left=0.0, right=1.0, top=1.0, bottom=0.9 / (figh + 0.9), wspace=0.02
+    )
 
-    _plot_impact_panel(axes[0], exposed_edges_by_type["road"], "A", base_network, bounds_3857=bounds_3857)
-    _plot_impact_panel(axes[1], exposed_edges_by_type["port"], "B", base_network, bounds_3857=bounds_3857)
-    _plot_impact_panel(axes[2], exposed_edges_by_type["rail"], "C", base_network, bounds_3857=bounds_3857)
+    _plot_impact_panel(
+        axes[0],
+        exposed_edges_by_type["road"],
+        "A",
+        base_network,
+        bounds_3857=bounds_3857,
+    )
+    _plot_impact_panel(
+        axes[1],
+        exposed_edges_by_type["port"],
+        "B",
+        base_network,
+        bounds_3857=bounds_3857,
+    )
+    _plot_impact_panel(
+        axes[2],
+        exposed_edges_by_type["rail"],
+        "C",
+        base_network,
+        bounds_3857=bounds_3857,
+    )
 
-    legend_handles = [Patch(facecolor=IMPACT_COLORS[i], label=IMPACT_LABELS[i],
-                            edgecolor="darkred", linewidth=0.5)
-                      for i in range(len(IMPACT_LABELS))]
-    fig.legend(handles=legend_handles, title=legend_title, loc="lower center",
-               bbox_to_anchor=(0.5, 0.0), ncol=len(IMPACT_LABELS), fontsize=14,
-               title_fontsize=16, frameon=True, fancybox=True, framealpha=0.9)
+    legend_handles = [
+        Patch(
+            facecolor=IMPACT_COLORS[i],
+            label=IMPACT_LABELS[i],
+            edgecolor="darkred",
+            linewidth=0.5,
+        )
+        for i in range(len(IMPACT_LABELS))
+    ]
+    fig.legend(
+        handles=legend_handles,
+        title=legend_title,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=len(IMPACT_LABELS),
+        fontsize=14,
+        title_fontsize=16,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+    )
 
     plt.savefig(Path(figure_path) / file_name, dpi=dpi, bbox_inches="tight")
     _show_or_close(show_figures)
@@ -1433,20 +2023,69 @@ def plot_criticality_2x2(
     figw, figh = _grid_figsize(bounds_3857, n_rows=2, n_cols=2, panel_height=6.5)
 
     fig, axes = plt.subplots(2, 2, figsize=(figw, figh + 0.9))
-    fig.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.9 / (figh + 0.9),
-                        wspace=0.02, hspace=0.02)
+    fig.subplots_adjust(
+        left=0.0,
+        right=1.0,
+        top=1.0,
+        bottom=0.9 / (figh + 0.9),
+        wspace=0.02,
+        hspace=0.02,
+    )
 
-    _plot_impact_panel(axes[0, 0], hospital_exposed_edges, "A", base_network, basemap_alpha=0.4, bounds_3857=bounds_3857)
-    _plot_impact_panel(axes[0, 1], factory_exposed_edges, "B", base_network, basemap_alpha=0.4, bounds_3857=bounds_3857)
-    _plot_impact_panel(axes[1, 0], police_exposed_edges, "C", base_network, basemap_alpha=0.4, bounds_3857=bounds_3857)
-    _plot_impact_panel(axes[1, 1], fire_exposed_edges, "D", base_network, basemap_alpha=0.4, bounds_3857=bounds_3857)
+    _plot_impact_panel(
+        axes[0, 0],
+        hospital_exposed_edges,
+        "A",
+        base_network,
+        basemap_alpha=0.4,
+        bounds_3857=bounds_3857,
+    )
+    _plot_impact_panel(
+        axes[0, 1],
+        factory_exposed_edges,
+        "B",
+        base_network,
+        basemap_alpha=0.4,
+        bounds_3857=bounds_3857,
+    )
+    _plot_impact_panel(
+        axes[1, 0],
+        police_exposed_edges,
+        "C",
+        base_network,
+        basemap_alpha=0.4,
+        bounds_3857=bounds_3857,
+    )
+    _plot_impact_panel(
+        axes[1, 1],
+        fire_exposed_edges,
+        "D",
+        base_network,
+        basemap_alpha=0.4,
+        bounds_3857=bounds_3857,
+    )
 
-    legend_handles = [Patch(facecolor=IMPACT_COLORS[i], label=f"{IMPACT_LABELS[i]} delay",
-                            edgecolor="darkred", linewidth=0.5)
-                      for i in range(len(IMPACT_LABELS))]
-    fig.legend(handles=legend_handles, title="Increased travel time", loc="lower center",
-               bbox_to_anchor=(0.5, 0.0), ncol=len(IMPACT_LABELS), fontsize=10,
-               title_fontsize=12, frameon=True, fancybox=True, framealpha=0.9)
+    legend_handles = [
+        Patch(
+            facecolor=IMPACT_COLORS[i],
+            label=f"{IMPACT_LABELS[i]} delay",
+            edgecolor="darkred",
+            linewidth=0.5,
+        )
+        for i in range(len(IMPACT_LABELS))
+    ]
+    fig.legend(
+        handles=legend_handles,
+        title="Increased travel time",
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=len(IMPACT_LABELS),
+        fontsize=10,
+        title_fontsize=12,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+    )
 
     plt.savefig(Path(figure_path) / "criticality_2x2.png", dpi=dpi, bbox_inches="tight")
     _show_or_close(show_figures)
@@ -1530,19 +2169,26 @@ def load_and_preprocess_criticality_data(
     """
     gdf_hazards = gpd.read_parquet(hazard_exposure_path)
 
-    gdf_all_critical = gpd.read_parquet(criticality_results_path).to_crs(gdf_hazards.crs)
+    gdf_all_critical = gpd.read_parquet(criticality_results_path).to_crs(
+        gdf_hazards.crs
+    )
 
     for col in ["oznaka_deo", "oznaka_put", "pocetna_st", "zavrsna_st"]:
         print(f"\n--- {col} ---")
-        print(f"  gdf_all_critical: {gdf_all_critical[col].nunique()} unique / {len(gdf_all_critical)} total, nulls: {gdf_all_critical[col].isna().sum()}")
-        print(f"  gdf_hazards:      {gdf_hazards[col].nunique()} unique / {len(gdf_hazards)} total, nulls: {gdf_hazards[col].isna().sum()}")
+        print(
+            f"  gdf_all_critical: {gdf_all_critical[col].nunique()} unique / {len(gdf_all_critical)} total, nulls: {gdf_all_critical[col].isna().sum()}"
+        )
+        print(
+            f"  gdf_hazards:      {gdf_hazards[col].nunique()} unique / {len(gdf_hazards)} total, nulls: {gdf_hazards[col].isna().sum()}"
+        )
 
     # Merge so that roads only in the criticality results are also included.
     # A left join on gdf_all_critical ensures no critical road is dropped, while
     # hazard columns are NaN for roads with no hazard exposure. Keep only the
     # hazard-specific columns from gdf_hazards to avoid conflicts.
     hazard_only_cols = [
-        col for col in gdf_hazards.columns
+        col
+        for col in gdf_hazards.columns
         if col not in gdf_all_critical.columns or col == "geometry"
     ]
 
@@ -1559,8 +2205,7 @@ def load_and_preprocess_criticality_data(
     ).drop(columns=["index_right"], errors="ignore")
 
     gdf_hazards = (
-        gdf_hazards_joined
-        .sort_values("_hazard_len", ascending=False)
+        gdf_hazards_joined.sort_values("_hazard_len", ascending=False)
         .groupby(level=0)
         .first()
         .drop(columns="_hazard_len")
@@ -1570,18 +2215,30 @@ def load_and_preprocess_criticality_data(
     assert len(gdf_hazards) == len(gdf_all_critical)
 
     # Accessibility impact layers (5c) and climate-change layers (4b)
-    hospital_exposed_edges = gpd.read_parquet(hospital_impacts_path).to_crs(gdf_hazards.crs)
-    factory_exposed_edges = gpd.read_parquet(factory_impacts_path).to_crs(gdf_hazards.crs)
+    hospital_exposed_edges = gpd.read_parquet(hospital_impacts_path).to_crs(
+        gdf_hazards.crs
+    )
+    factory_exposed_edges = gpd.read_parquet(factory_impacts_path).to_crs(
+        gdf_hazards.crs
+    )
     police_exposed_edges = gpd.read_parquet(police_impacts_path).to_crs(gdf_hazards.crs)
     fire_exposed_edges = gpd.read_parquet(fire_impacts_path).to_crs(gdf_hazards.crs)
     border_exposed_edges = gpd.read_parquet(border_impacts_path).to_crs(gdf_hazards.crs)
     port_exposed_edges = gpd.read_parquet(port_impacts_path).to_crs(gdf_hazards.crs)
-    railway_exposed_edges = gpd.read_parquet(railway_impacts_path).to_crs(gdf_hazards.crs)
+    railway_exposed_edges = gpd.read_parquet(railway_impacts_path).to_crs(
+        gdf_hazards.crs
+    )
 
-    future_flood_change_rp = gpd.read_parquet(future_floods_change_rp_path).to_crs(gdf_hazards.crs)
-    future_rainfall_change = gpd.read_parquet(future_rainfall_change_path).to_crs(gdf_hazards.crs)
+    future_flood_change_rp = gpd.read_parquet(future_floods_change_rp_path).to_crs(
+        gdf_hazards.crs
+    )
+    future_rainfall_change = gpd.read_parquet(future_rainfall_change_path).to_crs(
+        gdf_hazards.crs
+    )
 
-    gdf_hazards = add_impact_column(gdf_hazards, hospital_exposed_edges, "hospital_delay")
+    gdf_hazards = add_impact_column(
+        gdf_hazards, hospital_exposed_edges, "hospital_delay"
+    )
     gdf_hazards = add_impact_column(gdf_hazards, factory_exposed_edges, "factory_delay")
     gdf_hazards = add_impact_column(gdf_hazards, police_exposed_edges, "police_delay")
     gdf_hazards = add_impact_column(gdf_hazards, fire_exposed_edges, "fire_delay")
@@ -1589,10 +2246,16 @@ def load_and_preprocess_criticality_data(
     gdf_hazards = add_impact_column(gdf_hazards, border_exposed_edges, "border_delay")
     gdf_hazards = add_impact_column(gdf_hazards, railway_exposed_edges, "railway_delay")
     gdf_hazards = add_impact_column(
-        gdf_hazards, future_flood_change_rp, "future_flood_change", col_to_focus="rp30_mean"
+        gdf_hazards,
+        future_flood_change_rp,
+        "future_flood_change",
+        col_to_focus="rp30_mean",
     )
     gdf_hazards = add_impact_column(
-        gdf_hazards, future_rainfall_change, "future_rainfall_change", col_to_focus="max_rx1day_pct"
+        gdf_hazards,
+        future_rainfall_change,
+        "future_rainfall_change",
+        col_to_focus="max_rx1day_pct",
     )
 
     return gdf_hazards
@@ -1612,7 +2275,9 @@ def clean_data(gdf_hazards: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     print(f"Rows after dropping invalid oznaka_deo: {len(gdf_hazards)}")
 
     gdf_hazards = gdf_hazards.drop_duplicates()
-    print(f"Rows after dropping exact duplicates (including geometry): {len(gdf_hazards)}")
+    print(
+        f"Rows after dropping exact duplicates (including geometry): {len(gdf_hazards)}"
+    )
 
     non_geom_cols = [col for col in gdf_hazards.columns if col != "geometry"]
     gdf_hazards = gdf_hazards.drop_duplicates(subset=non_geom_cols)
@@ -1626,7 +2291,9 @@ def clean_data(gdf_hazards: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     drop_mask = duplicated_mask & short_mask & has_survivor
 
     gdf_hazards = gdf_hazards[~drop_mask]
-    print(f"Rows after dropping sections with double oznaka_deo shorter than 50m: {len(gdf_hazards)}")
+    print(
+        f"Rows after dropping sections with double oznaka_deo shorter than 50m: {len(gdf_hazards)}"
+    )
 
     return gdf_hazards
 
@@ -1664,7 +2331,9 @@ def prepare_metrics(gdf_hazards: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         0.0,
     )
 
-    gdf_hazards["wildfire_susceptibility"] = gdf_hazards["wildfire_susc"].clip(0, 1).astype(float)
+    gdf_hazards["wildfire_susceptibility"] = (
+        gdf_hazards["wildfire_susc"].clip(0, 1).astype(float)
+    )
 
     return gdf_hazards
 
@@ -1676,13 +2345,42 @@ def prepare_metrics(gdf_hazards: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 # Attributes taken from the row with the maximum road_length within each group
 # (road_length itself is summed). Geometry is taken from that same longest row.
 _DEDUP_TAKE_FROM_LONGEST = [
-    "section_id", "from_id", "to_id", "objectid", "oznaka_deo", "smer_gdf1",
-    "kategorija", "oznaka_put", "oznaka_poc", "naziv_poce", "oznaka_zav",
-    "naziv_zavr", "duzina_deo", "pocetna_st", "zavrsna_st", "stanje", "id",
-    "passenger_cars", "buses", "light_trucks", "medium_trucks", "heavy_trucks",
-    "articulated_vehicles", "total_aadt", "road_length", "speed", "fft",
+    "section_id",
+    "from_id",
+    "to_id",
+    "objectid",
+    "oznaka_deo",
+    "smer_gdf1",
+    "kategorija",
+    "oznaka_put",
+    "oznaka_poc",
+    "naziv_poce",
+    "oznaka_zav",
+    "naziv_zavr",
+    "duzina_deo",
+    "pocetna_st",
+    "zavrsna_st",
+    "stanje",
+    "id",
+    "passenger_cars",
+    "buses",
+    "light_trucks",
+    "medium_trucks",
+    "heavy_trucks",
+    "articulated_vehicles",
+    "total_aadt",
+    "road_length",
+    "speed",
+    "fft",
 ]
-_CRITICALITY_ORDER = ["No criticality", "Very Low", "Low", "Medium", "High", "Very High"]
+_CRITICALITY_ORDER = [
+    "No criticality",
+    "Very Low",
+    "Low",
+    "Medium",
+    "High",
+    "Very High",
+]
 
 
 def deduplicate_by_section(
@@ -1711,15 +2409,23 @@ def deduplicate_by_section(
     geom_name = gdf.geometry.name
 
     drop_cols = [
-        c for c in gdf.columns
+        c
+        for c in gdf.columns
         if c.endswith("_norm") or c.endswith("_log") or c == "mean_class"
     ]
     gdf = gdf.drop(columns=drop_cols, errors="ignore")
 
     weighted_avg_cols = [c for c in (weighted_avg_cols or []) if c in gdf.columns]
     take_longest = [c for c in _DEDUP_TAKE_FROM_LONGEST if c in gdf.columns]
-    class_cols = [c for c in ("H_class", "T_class", "A_class", "CC_class") if c in gdf.columns]
-    special = set(take_longest) | {min_col, group_col, geom_name} | set(weighted_avg_cols) | set(class_cols)
+    class_cols = [
+        c for c in ("H_class", "T_class", "A_class", "CC_class") if c in gdf.columns
+    ]
+    special = (
+        set(take_longest)
+        | {min_col, group_col, geom_name}
+        | set(weighted_avg_cols)
+        | set(class_cols)
+    )
     max_cols = [c for c in gdf.columns if c not in special]
 
     def aggregate_group(grp):
@@ -1746,8 +2452,11 @@ def deduplicate_by_section(
         for col in class_cols:
             non_null = grp[col].dropna()
             result[col] = (
-                pd.Categorical(non_null, categories=_CRITICALITY_ORDER, ordered=True).max()
-                if not non_null.empty else np.nan
+                pd.Categorical(
+                    non_null, categories=_CRITICALITY_ORDER, ordered=True
+                ).max()
+                if not non_null.empty
+                else np.nan
             )
 
         for col in max_cols:
@@ -1795,25 +2504,50 @@ def deduplicate_by_section(
 
 # Hazard Exposure (H). The climate subset is used when climate_hazards_only=True.
 _HAZARD_METRICS = [
-    "flood_depth", "future_rainfall_change", "future_flood_change",
-    "max_pavement_temp", "wildfire_susceptibility", "landslide_exposure", "snow_drift",
+    "flood_depth",
+    "future_rainfall_change",
+    "future_flood_change",
+    "max_pavement_temp",
+    "wildfire_susceptibility",
+    "landslide_exposure",
+    "snow_drift",
 ]
-_HAZARD_CLIMATE_METRICS = ["future_rainfall_change", "max_pavement_temp", "landslide_exposure"]
+_HAZARD_CLIMATE_METRICS = [
+    "future_rainfall_change",
+    "max_pavement_temp",
+    "landslide_exposure",
+]
 # National-scale travel disruption (T)
 _TRAVEL_METRICS = ["phl", "thl", "pkl", "tkl"]
 # Local accessibility (A)
 _ACCESSIBILITY_METRICS = [
-    "hospital_delay", "fire_delay", "police_delay", "factory_delay",
-    "port_delay", "border_delay", "railway_delay",
+    "hospital_delay",
+    "fire_delay",
+    "police_delay",
+    "factory_delay",
+    "port_delay",
+    "border_delay",
+    "railway_delay",
 ]
 # Continuous metrics that get a log(x+1) transform before normalisation.
 # Binary indicators (landslide_exposure, wildfire_susceptibility) are excluded.
 _LOG_TRANSFORM_METRICS = [
-    "flood_depth", "future_rainfall_change", "future_flood_change",
-    "snow_drift", "max_pavement_temp",
-    "phl", "thl", "pkl", "tkl",
-    "hospital_delay", "fire_delay", "police_delay",
-    "factory_delay", "port_delay", "border_delay", "railway_delay",
+    "flood_depth",
+    "future_rainfall_change",
+    "future_flood_change",
+    "snow_drift",
+    "max_pavement_temp",
+    "phl",
+    "thl",
+    "pkl",
+    "tkl",
+    "hospital_delay",
+    "fire_delay",
+    "police_delay",
+    "factory_delay",
+    "port_delay",
+    "border_delay",
+    "railway_delay",
 ]
 # Convex score per quintile: Q1=0, Q2=1, Q3=2, Q4=5, Q5=10 (0 = no criticality).
 CONVEX_MAP = {0: 0, 1: 0.5, 2: 1, 3: 2, 4: 5, 5: 10}
@@ -1938,7 +2672,9 @@ def score_climate_criticality(
     gdf["H_extended"] = gdf["H_all"]
     gdf["H_class_extended"] = _classify(gdf["H_all"])
     gdf["climate_criticality_extended"] = _combine(gdf["H_all"])
-    gdf["climate_criticality_class_extended"] = _classify(gdf["climate_criticality_extended"])
+    gdf["climate_criticality_class_extended"] = _classify(
+        gdf["climate_criticality_extended"]
+    )
 
     # Aliases consumed by the plotting / statistics helpers below.
     gdf["criticality_mean"] = gdf["climate_criticality"]
@@ -1977,8 +2713,12 @@ def plot_climate_criticality_components(
     colors = ["#e0e0e0", "#edf8fb", "#b3cde3", "#8c96c6", "#8856a7", "#810f7c"]
     color_map = dict(zip(labels, colors))
     width_mapping = {
-        "No criticality": 0.2, "Very Low": 0.6, "Low": 0.9,
-        "Medium": 1.3, "High": 2.0, "Very High": 3.0,
+        "No criticality": 0.2,
+        "Very Low": 0.6,
+        "Low": 0.9,
+        "Medium": 1.3,
+        "High": 2.0,
+        "Very High": 3.0,
     }
 
     original_crs = gdf_hazards.crs
@@ -1989,15 +2729,24 @@ def plot_climate_criticality_components(
             subset = gdf[gdf[class_col] == cat]
             if not subset.empty:
                 subset.plot(
-                    ax=ax, color=color_map[cat], linewidth=width_mapping[cat],
+                    ax=ax,
+                    color=color_map[cat],
+                    linewidth=width_mapping[cat],
                     alpha=0.8 if cat != "No criticality" else 0.4,
                     zorder=labels.index(cat),
                 )
         cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, attribution=False)
         ax.axis("off")
-        ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=22,
-                fontweight="bold", verticalalignment="top",
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9))
+        ax.text(
+            0.05,
+            0.95,
+            letter,
+            transform=ax.transAxes,
+            fontsize=22,
+            fontweight="bold",
+            verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9),
+        )
         ax.set_title(title, fontsize=14, fontweight="bold")
 
     # Size each panel to the data's aspect ratio so the (equal-aspect) maps fill
@@ -2011,7 +2760,11 @@ def plot_climate_criticality_components(
     fig_h = map_h + legend_in + title_in
     fig_w = 3 * map_h * data_aspect
     fig, axes = plt.subplots(1, 3, figsize=(fig_w, fig_h))
-    titles = ["Hazard-Exposure", "National-Scale Travel Disruption", "Local Accessibility"]
+    titles = [
+        "Hazard-Exposure",
+        "National-Scale Travel Disruption",
+        "Local Accessibility",
+    ]
     for i, ax in enumerate(axes):
         plot_panel(axes[i], gdf_hazards, class_cols[i], chr(65 + i), titles[i])
 
@@ -2019,14 +2772,27 @@ def plot_climate_criticality_components(
         Patch(facecolor=color_map[lbl], label=lbl, edgecolor="grey", linewidth=0.5)
         for lbl in labels
     ]
-    fig.legend(handles=legend_handles, title="Criticality Level", loc="lower center",
-               bbox_to_anchor=(0.5, 0.02), ncol=6, fontsize=13, title_fontsize=15, frameon=True)
+    fig.legend(
+        handles=legend_handles,
+        title="Criticality Level",
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=6,
+        fontsize=13,
+        title_fontsize=15,
+        frameon=True,
+    )
 
     # Pull the panels flush together (no tight_layout: it can't remove the
     # centring gap). The reserved strips keep the legend and titles clear.
-    plt.subplots_adjust(left=0, right=1, top=1 - title_in / fig_h,
-                        bottom=legend_in / fig_h, wspace=0.02)
-    plt.savefig(Path(figure_path) / "criticality_analysis_3panel.png", dpi=300, bbox_inches="tight")
+    plt.subplots_adjust(
+        left=0, right=1, top=1 - title_in / fig_h, bottom=legend_in / fig_h, wspace=0.02
+    )
+    plt.savefig(
+        Path(figure_path) / "criticality_analysis_3panel.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
 
     # ArcGIS layers per sub-index (restore original CRS first)
     gdf_hazards = gdf_hazards.to_crs(original_crs)
@@ -2036,10 +2802,16 @@ def plot_climate_criticality_components(
         ("A_class", "local_accessibility", "Local Accessibility"),
     ]:
         save_lyrx_layer(
-            gdf=gdf_hazards, gpkg_path=None, gdb_path=gdb_path,
-            lyrx_path=Path(lyrx_dir) / f"{name}.lyrx", layer_name=name,
-            labels=labels, colors=colors, width_mapping=width_mapping,
-            field=field, title=title,
+            gdf=gdf_hazards,
+            gpkg_path=None,
+            gdb_path=gdb_path,
+            lyrx_path=Path(lyrx_dir) / f"{name}.lyrx",
+            layer_name=name,
+            labels=labels,
+            colors=colors,
+            width_mapping=width_mapping,
+            field=field,
+            title=title,
         )
 
     _show_or_close(show_figures)
@@ -2061,8 +2833,10 @@ def plot_climate_criticality_components_4panel(
     # Row-major order for a 2×2 grid: top row = the two hazard metrics.
     class_cols = ["H_class", "H_class_extended", "T_class", "A_class"]
     titles = [
-        "Hazard-Exposure", "Extended Hazard-Exposure",
-        "National-Scale Travel Disruption", "Local Accessibility",
+        "Hazard-Exposure",
+        "Extended Hazard-Exposure",
+        "National-Scale Travel Disruption",
+        "Local Accessibility",
     ]
     missing = [c for c in class_cols if c not in gdf_hazards.columns]
     if missing:
@@ -2072,8 +2846,12 @@ def plot_climate_criticality_components_4panel(
     colors = ["#e0e0e0", "#edf8fb", "#b3cde3", "#8c96c6", "#8856a7", "#810f7c"]
     color_map = dict(zip(labels, colors))
     width_mapping = {
-        "No criticality": 0.2, "Very Low": 0.6, "Low": 0.9,
-        "Medium": 1.3, "High": 2.0, "Very High": 3.0,
+        "No criticality": 0.2,
+        "Very Low": 0.6,
+        "Low": 0.9,
+        "Medium": 1.3,
+        "High": 2.0,
+        "Very High": 3.0,
     }
 
     gdf_hazards = gdf_hazards.to_crs(epsg=3857)
@@ -2083,15 +2861,24 @@ def plot_climate_criticality_components_4panel(
             subset = gdf[gdf[class_col] == cat]
             if not subset.empty:
                 subset.plot(
-                    ax=ax, color=color_map[cat], linewidth=width_mapping[cat],
+                    ax=ax,
+                    color=color_map[cat],
+                    linewidth=width_mapping[cat],
                     alpha=0.8 if cat != "No criticality" else 0.4,
                     zorder=labels.index(cat),
                 )
         cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, attribution=False)
         ax.axis("off")
-        ax.text(0.05, 0.95, letter, transform=ax.transAxes, fontsize=22,
-                fontweight="bold", verticalalignment="top",
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9))
+        ax.text(
+            0.05,
+            0.95,
+            letter,
+            transform=ax.transAxes,
+            fontsize=22,
+            fontweight="bold",
+            verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9),
+        )
         ax.set_title(title, fontsize=14, fontweight="bold")
 
     # Size panels to the data aspect so the equal-aspect maps sit flush (same
@@ -2099,7 +2886,11 @@ def plot_climate_criticality_components_4panel(
     # titles. A 2×2 grid needs a title strip above each of the two rows.
     minx, miny, maxx, maxy = gdf_hazards.total_bounds
     data_aspect = (maxx - minx) / (maxy - miny)
-    map_h, legend_in, title_in = 6.0, 1.25, 0.45  # inches (legend_in raised → more gap above legend)
+    map_h, legend_in, title_in = (
+        6.0,
+        1.25,
+        0.45,
+    )  # inches (legend_in raised → more gap above legend)
     fig_h = 2 * map_h + legend_in + 2 * title_in
     fig_w = 2 * map_h * data_aspect
     fig, axes = plt.subplots(2, 2, figsize=(fig_w, fig_h))
@@ -2111,13 +2902,30 @@ def plot_climate_criticality_components_4panel(
         Patch(facecolor=color_map[lbl], label=lbl, edgecolor="grey", linewidth=0.5)
         for lbl in labels
     ]
-    fig.legend(handles=legend_handles, title="Criticality Level", loc="lower center",
-               bbox_to_anchor=(0.5, 0.02), ncol=6, fontsize=13, title_fontsize=15, frameon=True)
+    fig.legend(
+        handles=legend_handles,
+        title="Criticality Level",
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=6,
+        fontsize=13,
+        title_fontsize=15,
+        frameon=True,
+    )
 
-    plt.subplots_adjust(left=0, right=1, top=1 - title_in / fig_h,
-                        bottom=legend_in / fig_h, wspace=0.02,
-                        hspace=1.1 * title_in / map_h)
-    plt.savefig(Path(figure_path) / "criticality_analysis_4panel.png", dpi=300, bbox_inches="tight")
+    plt.subplots_adjust(
+        left=0,
+        right=1,
+        top=1 - title_in / fig_h,
+        bottom=legend_in / fig_h,
+        wspace=0.02,
+        hspace=1.1 * title_in / map_h,
+    )
+    plt.savefig(
+        Path(figure_path) / "criticality_analysis_4panel.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
     _show_or_close(show_figures)
 
 
@@ -2138,8 +2946,12 @@ def plot_combined_climate_criticality(
     colors = ["#e0e0e0", "#ffffcc", "#a1dab4", "#41b6c4", "#2c7fb8", "#253494"]
     color_map = dict(zip(labels, colors))
     width_mapping = {
-        "No criticality": 0.2, "Very Low": 0.6, "Low": 1.0,
-        "Medium": 1.5, "High": 2.2, "Very High": 3.2,
+        "No criticality": 0.2,
+        "Very Low": 0.6,
+        "Low": 1.0,
+        "Medium": 1.5,
+        "High": 2.2,
+        "Very High": 3.2,
     }
 
     original_crs = gdf_hazards.crs
@@ -2150,8 +2962,11 @@ def plot_combined_climate_criticality(
         subset = gdf_hazards[gdf_hazards[cc_class_col] == cat]
         if not subset.empty:
             subset.plot(
-                ax=ax, color=color_map[cat], linewidth=width_mapping[cat],
-                alpha=0.8 if cat != "No criticality" else 0.4, zorder=labels.index(cat),
+                ax=ax,
+                color=color_map[cat],
+                linewidth=width_mapping[cat],
+                alpha=0.8 if cat != "No criticality" else 0.4,
+                zorder=labels.index(cat),
             )
 
     cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, attribution=False)
@@ -2160,18 +2975,33 @@ def plot_combined_climate_criticality(
         Patch(facecolor=color_map[lbl], label=lbl, edgecolor="grey", linewidth=0.5)
         for lbl in labels
     ]
-    ax.legend(handles=legend_handles, title="Climate Criticality", loc="upper right",
-              fontsize=14, title_fontsize=16, frameon=True, framealpha=0.9)
+    ax.legend(
+        handles=legend_handles,
+        title="Climate Criticality",
+        loc="upper right",
+        fontsize=14,
+        title_fontsize=16,
+        frameon=True,
+        framealpha=0.9,
+    )
 
     plt.tight_layout()
-    plt.savefig(Path(figure_path) / "climate_criticality_mean.png", dpi=150, bbox_inches="tight")
+    plt.savefig(
+        Path(figure_path) / "climate_criticality_mean.png", dpi=150, bbox_inches="tight"
+    )
 
     gdf_hazards = gdf_hazards.to_crs(original_crs)
     save_lyrx_layer(
-        gdf=gdf_hazards, gpkg_path=None, gdb_path=gdb_path,
+        gdf=gdf_hazards,
+        gpkg_path=None,
+        gdb_path=gdb_path,
         lyrx_path=Path(lyrx_dir) / "climate_criticality_index.lyrx",
-        layer_name="climate_criticality", labels=labels, colors=colors,
-        width_mapping=width_mapping, field=cc_class_col, title="Climate Criticality Metric",
+        layer_name="climate_criticality",
+        labels=labels,
+        colors=colors,
+        width_mapping=width_mapping,
+        field=cc_class_col,
+        title="Climate Criticality Metric",
     )
 
     _show_or_close(show_figures)
@@ -2181,11 +3011,17 @@ def plot_combined_climate_criticality(
 # 5d — Summary statistics
 # ---------------------------------------------------------------------------
 
+
 def print_climate_criticality_statistics(gdf_hazards: gpd.GeoDataFrame) -> None:
     """Print distribution, road-category, tier, top-section and correlation summaries."""
     gdf_hazards = gdf_hazards.copy()
     class_cols = ["H_class", "T_class", "A_class", "climate_criticality_class"]
-    class_names = ["Hazard Exposure", "Travel Disruption", "Local Accessibility", "Combined Criticality"]
+    class_names = [
+        "Hazard Exposure",
+        "Travel Disruption",
+        "Local Accessibility",
+        "Combined Criticality",
+    ]
     index_cols = ["H", "T", "A", "climate_criticality"]
     labels = _CC_LABELS
     high_crit_labels = ["High", "Very High"]
@@ -2204,38 +3040,65 @@ def print_climate_criticality_statistics(gdf_hazards: gpd.GeoDataFrame) -> None:
             print(f"  {label:15s}: {count:5d} ({count / total * 100:5.1f}%)")
 
     print("\n2. MEAN CRITICALITY SCORES BY ROAD CATEGORY")
-    road_summary = gdf_hazards.groupby("kategorija").agg(
-        {
-            "H": ["count", "mean", "median", "max"],
-            "T": ["mean", "median", "max"],
-            "A": ["mean", "median", "max"],
-            "climate_criticality": ["mean", "median", "max"],
-        }
-    ).round(4)
+    road_summary = (
+        gdf_hazards.groupby("kategorija")
+        .agg(
+            {
+                "H": ["count", "mean", "median", "max"],
+                "T": ["mean", "median", "max"],
+                "A": ["mean", "median", "max"],
+                "climate_criticality": ["mean", "median", "max"],
+            }
+        )
+        .round(4)
+    )
     print(road_summary.to_string())
 
     print("\n3. HIGH-TIER vs LOW-TIER ROADS COMPARISON")
     high_tier = ["IA", "IM", "IB"]
     low_tier = ["IIA", "IIB"]
     gdf_hazards["road_tier"] = np.where(
-        gdf_hazards["kategorija"].isin(high_tier), "High-Tier (IA/IM/IB)",
-        np.where(gdf_hazards["kategorija"].isin(low_tier), "Low-Tier (IIA/IIB)", "Other"),
+        gdf_hazards["kategorija"].isin(high_tier),
+        "High-Tier (IA/IM/IB)",
+        np.where(
+            gdf_hazards["kategorija"].isin(low_tier), "Low-Tier (IIA/IIB)", "Other"
+        ),
     )
     tier_summary = gdf_hazards.groupby("road_tier")[index_cols].mean().round(4)
     print(tier_summary.to_string())
 
-    high_tier_scores = gdf_hazards.loc[gdf_hazards["road_tier"] == "High-Tier (IA/IM/IB)", "climate_criticality"]
-    low_tier_scores = gdf_hazards.loc[gdf_hazards["road_tier"] == "Low-Tier (IIA/IIB)", "climate_criticality"]
+    high_tier_scores = gdf_hazards.loc[
+        gdf_hazards["road_tier"] == "High-Tier (IA/IM/IB)", "climate_criticality"
+    ]
+    low_tier_scores = gdf_hazards.loc[
+        gdf_hazards["road_tier"] == "Low-Tier (IIA/IIB)", "climate_criticality"
+    ]
     if len(high_tier_scores) > 0 and len(low_tier_scores) > 0:
-        stat, pvalue = scipy_stats.mannwhitneyu(high_tier_scores, low_tier_scores, alternative="two-sided")
+        stat, pvalue = scipy_stats.mannwhitneyu(
+            high_tier_scores, low_tier_scores, alternative="two-sided"
+        )
         print("\nMann-Whitney U test (High-Tier vs Low-Tier):")
-        print(f"  U-statistic: {stat:.2f}  p-value: {pvalue:.6f}  Significant: {'Yes' if pvalue < 0.05 else 'No'}")
+        print(
+            f"  U-statistic: {stat:.2f}  p-value: {pvalue:.6f}  Significant: {'Yes' if pvalue < 0.05 else 'No'}"
+        )
 
     print("\n4. TOP 10 MOST CRITICAL SECTIONS (Combined)")
-    top_cols = [c for c in [
-        "oznaka_deo", "kategorija", "oznaka_put", "naziv_poce", "naziv_zavr",
-        "H", "T", "A", "climate_criticality", "climate_criticality_class",
-    ] if c in gdf_hazards.columns]
+    top_cols = [
+        c
+        for c in [
+            "oznaka_deo",
+            "kategorija",
+            "oznaka_put",
+            "naziv_poce",
+            "naziv_zavr",
+            "H",
+            "T",
+            "A",
+            "climate_criticality",
+            "climate_criticality_class",
+        ]
+        if c in gdf_hazards.columns
+    ]
     print(gdf_hazards.nlargest(10, "climate_criticality")[top_cols].to_string())
 
     print("\n5. CORRELATION BETWEEN SUB-INDICES")
@@ -2248,12 +3111,16 @@ def print_climate_criticality_statistics(gdf_hazards: gpd.GeoDataFrame) -> None:
             subset = gdf_hazards[gdf_hazards["kategorija"] == cat]
             count_high = subset[class_col].isin(high_crit_labels).sum()
             total = len(subset)
-            print(f"  {cat:12s} | {count_high / total * 100:6.1f}% | {count_high:5d} / {total}")
+            print(
+                f"  {cat:12s} | {count_high / total * 100:6.1f}% | {count_high:5d} / {total}"
+            )
 
     total_sections = len(gdf_hazards)
     high_vh = gdf_hazards["climate_criticality_class"].isin(high_crit_labels).sum()
-    print(f"\nKEY: {total_sections} sections analysed; "
-          f"{high_vh} ({high_vh / total_sections * 100:.1f}%) High/Very High combined criticality.")
+    print(
+        f"\nKEY: {total_sections} sections analysed; "
+        f"{high_vh} ({high_vh / total_sections * 100:.1f}%) High/Very High combined criticality."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2261,13 +3128,28 @@ def print_climate_criticality_statistics(gdf_hazards: gpd.GeoDataFrame) -> None:
 # ---------------------------------------------------------------------------
 
 _EXCEL_ID_COLS = [
-    "objectid", "oznaka_deo", "smer_gdf1", "kategorija", "oznaka_put",
-    "oznaka_poc", "naziv_poce", "oznaka_zav", "naziv_zavr",
-    "duzina_deo", "pocetna_st", "zavrsna_st", "stanje",
+    "objectid",
+    "oznaka_deo",
+    "smer_gdf1",
+    "kategorija",
+    "oznaka_put",
+    "oznaka_poc",
+    "naziv_poce",
+    "oznaka_zav",
+    "naziv_zavr",
+    "duzina_deo",
+    "pocetna_st",
+    "zavrsna_st",
+    "stanje",
 ]
 _EXCEL_TRAFFIC_COLS = [
-    "passenger_cars", "buses", "light_trucks", "medium_trucks",
-    "heavy_trucks", "articulated_vehicles", "total_aadt",
+    "passenger_cars",
+    "buses",
+    "light_trucks",
+    "medium_trucks",
+    "heavy_trucks",
+    "articulated_vehicles",
+    "total_aadt",
 ]
 
 
@@ -2293,9 +3175,14 @@ def _format_climate_workbook(path: Path) -> None:
     }
     class_fonts_white = {"High", "Very High"}
     class_columns = {
-        "H_class", "H_climate_class", "T_class", "A_class",
-        "CC_class", "climate_criticality_class",
-        "H_class_extended", "climate_criticality_class_extended",
+        "H_class",
+        "H_climate_class",
+        "T_class",
+        "A_class",
+        "CC_class",
+        "climate_criticality_class",
+        "H_class_extended",
+        "climate_criticality_class_extended",
     }
 
     for ws in wb.worksheets:
@@ -2322,7 +3209,9 @@ def _format_climate_workbook(path: Path) -> None:
         width_cap = 90 if ws.title == "Metric Descriptions" else 30
         for col_cells in ws.columns:
             max_len = max((len(str(c.value or "")) for c in col_cells), default=8)
-            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(max_len + 3, width_cap)
+            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(
+                max_len + 3, width_cap
+            )
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = ws.dimensions
 
@@ -2355,28 +3244,80 @@ _DESC_TRAFFIC = [
     ("total_aadt", "Total annual average daily traffic", "vehicles/day"),
 ]
 _DESC_HAZARD = [
-    ("flood_depth", "Maximum inundation depth along section (1-in-100-year flood)", "cm"),
-    ("future_rainfall_change", "Projected change in extreme rainfall intensity (RCP 8.5, far future)", "% change"),
-    ("future_flood_change", "Projected change in river flood return period under 4°C of global warming (100 baseline return period)", "years of return period"),
-    ("max_pavement_temp", "Projected maximum pavement temperature (hottest 7 days)", "°C"),
-    ("wildfire_susceptibility", "Section intersects high-risk wildfire zone", "0/1 (no/yes)"),
-    ("landslide_exposure", "Section intersects historical landslide zone", "0/1 (no/yes)"),
+    (
+        "flood_depth",
+        "Maximum inundation depth along section (1-in-100-year flood)",
+        "cm",
+    ),
+    (
+        "future_rainfall_change",
+        "Projected change in extreme rainfall intensity (RCP 8.5, far future)",
+        "% change",
+    ),
+    (
+        "future_flood_change",
+        "Projected change in river flood return period under 4°C of global warming (100 baseline return period)",
+        "years of return period",
+    ),
+    (
+        "max_pavement_temp",
+        "Projected maximum pavement temperature (hottest 7 days)",
+        "°C",
+    ),
+    (
+        "wildfire_susceptibility",
+        "Section intersects high-risk wildfire zone",
+        "0/1 (no/yes)",
+    ),
+    (
+        "landslide_exposure",
+        "Section intersects historical landslide zone",
+        "0/1 (no/yes)",
+    ),
     ("snow_drift", "Length of historical snow drift intersecting this section", "km"),
 ]
 _DESC_TRAVEL = [
-    ("phl", "Passenger hours lost (daily, weighted by traffic volume)", "passenger-hours"),
+    (
+        "phl",
+        "Passenger hours lost (daily, weighted by traffic volume)",
+        "passenger-hours",
+    ),
     ("thl", "Tonnage hours lost (daily, weighted by freight volume)", "ton-hours"),
-    ("pkl", "Passenger kilometers lost (additional distance due to rerouting)", "passenger-km"),
+    (
+        "pkl",
+        "Passenger kilometers lost (additional distance due to rerouting)",
+        "passenger-km",
+    ),
     ("tkl", "Tonnage kilometers lost (additional freight distance)", "ton-km"),
 ]
 _DESC_ACCESS = [
     ("hospital_delay", "Additional travel time to nearest hospital", "hours"),
-    ("fire_delay", "Additional travel time from fire stations to service areas", "hours"),
-    ("police_delay", "Additional travel time from police stations to service areas", "hours"),
-    ("factory_delay", "Additional travel time from industrial areas to border crossings", "hours"),
+    (
+        "fire_delay",
+        "Additional travel time from fire stations to service areas",
+        "hours",
+    ),
+    (
+        "police_delay",
+        "Additional travel time from police stations to service areas",
+        "hours",
+    ),
+    (
+        "factory_delay",
+        "Additional travel time from industrial areas to border crossings",
+        "hours",
+    ),
     ("port_delay", "Additional travel time from agricultural areas to ports", "hours"),
-    ("border_delay", "Additional travel time from agricultural areas to border crossings", "hours"),
-    ("railway_delay", "Additional travel time from agricultural areas to railway stations", "hours"),
+    (
+        "border_delay",
+        "Additional travel time from agricultural areas to border crossings",
+        "hours",
+    ),
+    (
+        "railway_delay",
+        "Additional travel time from agricultural areas to railway stations",
+        "hours",
+    ),
 ]
 
 
@@ -2413,22 +3354,74 @@ def _metric_descriptions_df(
     rows += _DESC_ACCESS
     rows.append(("— Per-metric derived columns —", "", ""))
     rows += [
-        ("<metric>_norm", "Min-max normalised metric value (log-transformed first for skewed metrics)", "0–1"),
-        ("<metric>_q", "Quintile score: 0 = no exposure, 1 = lowest 20% of exposed sections, 5 = highest 20%", "0–5"),
-        ("<metric>_cv", "Convex weight from the quintile score (1→0, 2→1, 3→2, 4→5, 5→10)", "0–10"),
+        (
+            "<metric>_norm",
+            "Min-max normalised metric value (log-transformed first for skewed metrics)",
+            "0–1",
+        ),
+        (
+            "<metric>_q",
+            "Quintile score: 0 = no exposure, 1 = lowest 20% of exposed sections, 5 = highest 20%",
+            "0–5",
+        ),
+        (
+            "<metric>_cv",
+            "Convex weight from the quintile score (1→0, 2→1, 3→2, 4→5, 5→10)",
+            "0–10",
+        ),
     ]
     rows.append(("— Sub-indices and combined criticality —", "", ""))
     rows += [
-        ("H", f"Hazard-exposure sub-index ({h_scope}): sum of convex scores of the {n_h} hazard metrics", f"0–{n_h * 10}"),
-        ("H_extended", "Extended hazard-exposure sub-index (all 7 hazards): sum of convex scores", "0–70"),
-        ("T", "National-scale travel-disruption sub-index: sum of convex scores of the 4 disruption metrics", "0–40"),
-        ("A", "Local-accessibility sub-index: sum of convex scores of the 7 accessibility metrics", "0–70"),
-        ("climate_criticality", f"Combined criticality ({h_scope}): {formula}", cc_range),
-        ("climate_criticality_extended", f"Combined criticality (all 7 hazards): {formula_ext}", cc_range),
-        ("H_class / T_class / A_class", "Sub-index criticality class (quintiles; 0 = No criticality)", "No criticality – Very High"),
-        ("H_class_extended", "All-hazards hazard-exposure criticality class", "No criticality – Very High"),
-        ("climate_criticality_class", f"Combined criticality class ({h_scope})", "No criticality – Very High"),
-        ("climate_criticality_class_extended", "Combined criticality class (all 7 hazards)", "No criticality – Very High"),
+        (
+            "H",
+            f"Hazard-exposure sub-index ({h_scope}): sum of convex scores of the {n_h} hazard metrics",
+            f"0–{n_h * 10}",
+        ),
+        (
+            "H_extended",
+            "Extended hazard-exposure sub-index (all 7 hazards): sum of convex scores",
+            "0–70",
+        ),
+        (
+            "T",
+            "National-scale travel-disruption sub-index: sum of convex scores of the 4 disruption metrics",
+            "0–40",
+        ),
+        (
+            "A",
+            "Local-accessibility sub-index: sum of convex scores of the 7 accessibility metrics",
+            "0–70",
+        ),
+        (
+            "climate_criticality",
+            f"Combined criticality ({h_scope}): {formula}",
+            cc_range,
+        ),
+        (
+            "climate_criticality_extended",
+            f"Combined criticality (all 7 hazards): {formula_ext}",
+            cc_range,
+        ),
+        (
+            "H_class / T_class / A_class",
+            "Sub-index criticality class (quintiles; 0 = No criticality)",
+            "No criticality – Very High",
+        ),
+        (
+            "H_class_extended",
+            "All-hazards hazard-exposure criticality class",
+            "No criticality – Very High",
+        ),
+        (
+            "climate_criticality_class",
+            f"Combined criticality class ({h_scope})",
+            "No criticality – Very High",
+        ),
+        (
+            "climate_criticality_class_extended",
+            "Combined criticality class (all 7 hazards)",
+            "No criticality – Very High",
+        ),
     ]
     return pd.DataFrame(rows, columns=["Column", "Description", "Unit"])
 
@@ -2456,7 +3449,9 @@ def export_climate_criticality_excel(
     if "objectid" not in df.columns:
         df["objectid"] = range(1, len(df) + 1)
 
-    hazard_metrics = _HAZARD_CLIMATE_METRICS if climate_hazards_only else _HAZARD_METRICS
+    hazard_metrics = (
+        _HAZARD_CLIMATE_METRICS if climate_hazards_only else _HAZARD_METRICS
+    )
 
     def metric_pairs(metrics):
         pairs = []
@@ -2464,16 +3459,40 @@ def export_climate_criticality_excel(
             pairs.extend([c, f"{c}_q", f"{c}_cv"])
         return pairs
 
-    overview = _EXCEL_ID_COLS + _EXCEL_TRAFFIC_COLS + [
-        "H", "T", "A", "climate_criticality",
-        "H_class", "T_class", "A_class", "climate_criticality_class",
-    ]
-    overview_ext = _EXCEL_ID_COLS + _EXCEL_TRAFFIC_COLS + [
-        "H_extended", "T", "A", "climate_criticality_extended",
-        "H_class_extended", "T_class", "A_class", "climate_criticality_class_extended",
-    ]
+    overview = (
+        _EXCEL_ID_COLS
+        + _EXCEL_TRAFFIC_COLS
+        + [
+            "H",
+            "T",
+            "A",
+            "climate_criticality",
+            "H_class",
+            "T_class",
+            "A_class",
+            "climate_criticality_class",
+        ]
+    )
+    overview_ext = (
+        _EXCEL_ID_COLS
+        + _EXCEL_TRAFFIC_COLS
+        + [
+            "H_extended",
+            "T",
+            "A",
+            "climate_criticality_extended",
+            "H_class_extended",
+            "T_class",
+            "A_class",
+            "climate_criticality_class_extended",
+        ]
+    )
     hazard = _EXCEL_ID_COLS + metric_pairs(hazard_metrics) + ["H", "H_class"]
-    hazard_ext = _EXCEL_ID_COLS + metric_pairs(_HAZARD_METRICS) + ["H_extended", "H_class_extended"]
+    hazard_ext = (
+        _EXCEL_ID_COLS
+        + metric_pairs(_HAZARD_METRICS)
+        + ["H_extended", "H_class_extended"]
+    )
     travel = _EXCEL_ID_COLS + metric_pairs(_TRAVEL_METRICS) + ["T", "T_class"]
     access = _EXCEL_ID_COLS + metric_pairs(_ACCESSIBILITY_METRICS) + ["A", "A_class"]
 
@@ -2489,12 +3508,22 @@ def export_climate_criticality_excel(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        sheet(overview, "climate_criticality").to_excel(writer, sheet_name="Overview", index=False)
-        sheet(overview_ext, "climate_criticality_extended").to_excel(writer, sheet_name="Overview Extended", index=False)
+        sheet(overview, "climate_criticality").to_excel(
+            writer, sheet_name="Overview", index=False
+        )
+        sheet(overview_ext, "climate_criticality_extended").to_excel(
+            writer, sheet_name="Overview Extended", index=False
+        )
         sheet(hazard, "H").to_excel(writer, sheet_name="Hazard Exposure", index=False)
-        sheet(hazard_ext, "H_extended").to_excel(writer, sheet_name="Hazard Exposure Extended", index=False)
-        sheet(travel, "T").to_excel(writer, sheet_name="National-Scale Disruption", index=False)
-        sheet(access, "A").to_excel(writer, sheet_name="Local Accessibility", index=False)
+        sheet(hazard_ext, "H_extended").to_excel(
+            writer, sheet_name="Hazard Exposure Extended", index=False
+        )
+        sheet(travel, "T").to_excel(
+            writer, sheet_name="National-Scale Disruption", index=False
+        )
+        sheet(access, "A").to_excel(
+            writer, sheet_name="Local Accessibility", index=False
+        )
         descriptions.to_excel(writer, sheet_name="Metric Descriptions", index=False)
 
     _format_climate_workbook(output_path)

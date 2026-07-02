@@ -79,14 +79,22 @@ def main():
 
     # 6. Maps (sub-indices + combined); ArcGIS layers -> results GDB + .lyrx
     plot_climate_criticality_components(
-        gdf, config.figure_path, config.results_gdb, config.lyrx_results,
+        gdf,
+        config.figure_path,
+        config.results_gdb,
+        config.lyrx_results,
         show_figures=config.show_figures,
     )
     plot_climate_criticality_components_4panel(
-        gdf, config.figure_path, show_figures=config.show_figures,
+        gdf,
+        config.figure_path,
+        show_figures=config.show_figures,
     )
     plot_combined_climate_criticality(
-        gdf, config.figure_path, config.results_gdb, config.lyrx_results,
+        gdf,
+        config.figure_path,
+        config.results_gdb,
+        config.lyrx_results,
         show_figures=config.show_figures,
     )
 
@@ -96,7 +104,8 @@ def main():
 
     # Excel (formatted, multi-sheet) + geospatial outputs
     export_climate_criticality_excel(
-        gdf, config.Path_climate_criticality_results,
+        gdf,
+        config.Path_climate_criticality_results,
         climate_hazards_only=config.climate_hazards_only,
         normalize_subindices=config.normalize_subindices,
     )

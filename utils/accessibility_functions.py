@@ -599,7 +599,11 @@ def _as_geodataframe(obj, crs: str = "EPSG:4326") -> gpd.GeoDataFrame:
     Inputs may come from disk (already projected to the output CRS) or be freshly
     computed lon/lat data without a CRS; in the latter case ``crs`` (WGS84) is set.
     """
-    gdf = obj if isinstance(obj, gpd.GeoDataFrame) else gpd.GeoDataFrame(obj, geometry="geometry")
+    gdf = (
+        obj
+        if isinstance(obj, gpd.GeoDataFrame)
+        else gpd.GeoDataFrame(obj, geometry="geometry")
+    )
     if gdf.crs is None:
         gdf = gdf.set_crs(crs)
     return gdf
@@ -1698,7 +1702,13 @@ def plot_emergency_curves_combined(
 
     panels = [
         (axes[0], df_worldpop_fire, "Access time to fire stations (hours)", "A", False),
-        (axes[1], df_worldpop_police, "Access time to police stations (hours)", "B", True),
+        (
+            axes[1],
+            df_worldpop_police,
+            "Access time to police stations (hours)",
+            "B",
+            True,
+        ),
     ]
 
     for ax, df_worldpop, xlabel, letter, show_legend in panels:
@@ -1728,7 +1738,9 @@ def plot_emergency_curves_combined(
             label="Normal condition",
         )
         ax.set_xlabel(xlabel, fontsize=12)
-        ax.set_ylabel("Population with access (%)" if letter == "A" else "", fontsize=12)
+        ax.set_ylabel(
+            "Population with access (%)" if letter == "A" else "", fontsize=12
+        )
         if show_legend:
             ax.legend(fontsize=12)
         ax.minorticks_on()
@@ -1753,7 +1765,12 @@ def plot_emergency_curves_combined(
             )
             ax.plot(threshold_100, 100, "o", color="#003049", markersize=6)
             ax.text(
-                x_text, 94, f"{threshold_100:.1f}h", color="black", ha="left", fontsize=12
+                x_text,
+                94,
+                f"{threshold_100:.1f}h",
+                color="black",
+                ha="left",
+                fontsize=12,
             )
 
     plt.tight_layout()
@@ -1809,7 +1826,9 @@ def plot_emergency_map_combined(
         for category, color in color_map.items():
             data = df_worldpop_plot[df_worldpop_plot["category"] == category]
             if not data.empty:
-                data.plot(ax=ax, color=color, legend=False, linewidth=0.1, edgecolor="grey")
+                data.plot(
+                    ax=ax, color=color, legend=False, linewidth=0.1, edgecolor="grey"
+                )
 
         Sink_plot.plot(ax=ax, color="red", markersize=80, marker="+", zorder=5)
         cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, alpha=0.5)

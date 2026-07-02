@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import geopandas as gpd
 
+
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Convert '#rrggbb' to (R, G, B) integers."""
     h = hex_color.lstrip("#")
@@ -114,14 +115,16 @@ def save_lyrx_layer(
             "type": "CIMSymbolReference",
             "symbol": {
                 "type": "CIMLineSymbol",
-                "symbolLayers": [{
-                    "type": "CIMSolidStroke",
-                    "enable": True,
-                    "capStyle": "Round",
-                    "joinStyle": "Round",
-                    "width": width,
-                    "color": {"type": "CIMRGBColor", "values": [r, g, b, 100]},
-                }],
+                "symbolLayers": [
+                    {
+                        "type": "CIMSolidStroke",
+                        "enable": True,
+                        "capStyle": "Round",
+                        "joinStyle": "Round",
+                        "width": width,
+                        "color": {"type": "CIMRGBColor", "values": [r, g, b, 100]},
+                    }
+                ],
             },
         }
 
@@ -132,21 +135,23 @@ def save_lyrx_layer(
         "defaultSymbol": make_symbol("#cccccc", 0.5),
         "defaultSymbolVisible": False,
         "fields": [field],
-        "groups": [{
-            "type": "CIMUniqueValueGroup",
-            "classes": [
-                {
-                    "type": "CIMUniqueValueClass",
-                    "label": label,
-                    "patch": "Default",
-                    "symbol": make_symbol(color, width_mapping.get(label, 1.0)),
-                    "values": [{"type": "CIMUniqueValue", "fieldValues": [label]}],
-                    "visible": True,
-                }
-                for label, color in zip(labels, colors)
-            ],
-            "heading": field,
-        }],
+        "groups": [
+            {
+                "type": "CIMUniqueValueGroup",
+                "classes": [
+                    {
+                        "type": "CIMUniqueValueClass",
+                        "label": label,
+                        "patch": "Default",
+                        "symbol": make_symbol(color, width_mapping.get(label, 1.0)),
+                        "values": [{"type": "CIMUniqueValue", "fieldValues": [label]}],
+                        "visible": True,
+                    }
+                    for label, color in zip(labels, colors)
+                ],
+                "heading": field,
+            }
+        ],
         "useDefaultSymbol": False,
         "polygonSymbolColorTarget": "Fill",
     }

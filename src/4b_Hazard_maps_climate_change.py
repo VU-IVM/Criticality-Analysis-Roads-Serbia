@@ -2,7 +2,6 @@ import sys
 import warnings
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -32,7 +31,9 @@ def main():
     # --- Load base data ---
     basins_csv = pd.read_csv(config.Path_flood_statistics_per_basin)
     all_basins = gpd.read_file(config.basins_shapefile)
-    basins = gpd.GeoDataFrame(basins_csv.merge(all_basins, left_on="basinID", right_on="HYBAS_ID"))
+    basins = gpd.GeoDataFrame(
+        basins_csv.merge(all_basins, left_on="basinID", right_on="HYBAS_ID")
+    )
 
     ds = xr.open_dataset(config.Path_flooding_climate_change)
     ds = ds.rio.write_crs("EPSG:3035", inplace=False)
@@ -45,14 +46,16 @@ def main():
 
     # Filter roads to Serbia only (no Kosovo)
     serbia_only = gpd.overlay(serbia, kosovo, how="difference").to_crs(roads_raw.crs)
-    roads = gpd.sjoin(roads_raw, serbia_only[["geometry"]], how="inner", predicate="within").drop(
-        columns=["index_right"], errors="ignore"
-    )
+    roads = gpd.sjoin(
+        roads_raw, serbia_only[["geometry"]], how="inner", predicate="within"
+    ).drop(columns=["index_right"], errors="ignore")
     roads = roads.to_crs("EPSG:3035")
     basins_3035 = basins.to_crs("EPSG:3035")
 
     # --- Future flood return periods ---
-    basins_3035, roads_rp = calculate_future_flood_return_periods(ds, basins_3035, roads, SCENARIOS)
+    basins_3035, roads_rp = calculate_future_flood_return_periods(
+        ds, basins_3035, roads, SCENARIOS
+    )
 
     plot_future_flood_basins(
         basins_3035=basins_3035,
@@ -98,7 +101,9 @@ def main():
         layer_names=precip_layer_names,
     )
 
-    plot_precipitation_change(results, config.figure_path, dpi=300, show_figures=config.show_figures)
+    plot_precipitation_change(
+        results, config.figure_path, dpi=300, show_figures=config.show_figures
+    )
 
 
 if __name__ == "__main__":

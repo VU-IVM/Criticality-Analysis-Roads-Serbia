@@ -761,12 +761,16 @@ def save_criticality_results(
     NetworkConfig.travel_disruptions_parquet.mkdir(parents=True, exist_ok=True)
     results.to_parquet(NetworkConfig.Path_criticality_results)
     save_gdb_layer(
-        results, NetworkConfig.travel_disruptions_gdb,
-        "criticality_results", NetworkConfig.output_crs,
+        results,
+        NetworkConfig.travel_disruptions_gdb,
+        "criticality_results",
+        NetworkConfig.output_crs,
     )
     save_excel_mirror(results, NetworkConfig.Path_criticality_results)
 
-    _log(f"Criticality results saved to {NetworkConfig.Path_criticality_results.resolve()}")
+    _log(
+        f"Criticality results saved to {NetworkConfig.Path_criticality_results.resolve()}"
+    )
 
 
 # ===========================================================================

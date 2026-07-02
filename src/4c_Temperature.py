@@ -38,8 +38,11 @@ def main():
 
     # --- Temperature difference plot (historic vs current air temp) ---
     plot_temperature_difference(
-        config.historic_temperature, config.current_temperature, serbia_3857,
-        config.temperature_figures_folder, dpi=300,
+        config.historic_temperature,
+        config.current_temperature,
+        serbia_3857,
+        config.temperature_figures_folder,
+        dpi=300,
         show_figures=config.show_figures,
     )
 
@@ -48,11 +51,28 @@ def main():
     data_serbia = mask_to_serbia(data, bounds, crs, serbia_3857)
 
     import numpy as np
+
     valid = data_serbia[~np.isnan(data_serbia)]
     print(f"Pavement temp range: {valid.min():.2f} – {valid.max():.2f} °C")
 
-    plot_pavement_temperature(data, "Pavement Temperature", config.temperature_figures_folder, bounds, crs, serbia_3857, show_figures=config.show_figures)
-    plot_pavement_temperature(data + 2, "Pavement Temperature (+ 2°C)", config.temperature_figures_folder, bounds, crs, serbia_3857, show_figures=config.show_figures)
+    plot_pavement_temperature(
+        data,
+        "Pavement Temperature",
+        config.temperature_figures_folder,
+        bounds,
+        crs,
+        serbia_3857,
+        show_figures=config.show_figures,
+    )
+    plot_pavement_temperature(
+        data + 2,
+        "Pavement Temperature (+ 2°C)",
+        config.temperature_figures_folder,
+        bounds,
+        crs,
+        serbia_3857,
+        show_figures=config.show_figures,
+    )
 
     # --- Urban heat island adjustment ---
     data_uhi = apply_urban_heat_island(
@@ -65,7 +85,9 @@ def main():
         data_uhi,
         "Pavement Temperature with urban heat islands under climate change",
         config.temperature_figures_folder,
-        bounds, crs, serbia_3857,
+        bounds,
+        crs,
+        serbia_3857,
         show_figures=config.show_figures,
     )
 

@@ -54,7 +54,9 @@ def main():
     df_agriculture_accessibility, df_agriculture_sinks = load_accessibility_results(
         "agriculture", parquet_dir
     )
-    plot_accessibility_curves_agriculture(df_agriculture_accessibility, figure_dir, show)
+    plot_accessibility_curves_agriculture(
+        df_agriculture_accessibility, figure_dir, show
+    )
     plot_access_time_agriculture_map(
         df_agriculture_accessibility, df_agriculture_sinks, figure_dir, show
     )

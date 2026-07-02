@@ -92,7 +92,9 @@ def main():
     df_agri["vertex_id"] = nearest_network_nodes(df_agri, nodes)
 
     print("Loading border crossings, ports and rail cargo terminals...")
-    Sinks_road, Sinks_port, Sinks_rail, all_sinks = load_sinks(config.path_to_Sinks, nodes)
+    Sinks_road, Sinks_port, Sinks_rail, all_sinks = load_sinks(
+        config.path_to_Sinks, nodes
+    )
 
     print("Calculating OD matrices for agricultural areas...")
     df_agri = calculate_OD_matrix(

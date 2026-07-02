@@ -2,7 +2,6 @@
 
 import os
 import pickle
-import xarray as xr
 import igraph as ig
 import geopandas as gpd
 import numpy as np
@@ -19,19 +18,20 @@ from config.network_config import NetworkConfig
 # Add near your other config constants
 OSM_TO_SERBIAN_CATEGORY = {
     "motorway": "IA",
-    "trunk":    "IM",
-    "primary":  "IB",
-    "secondary":"IIA",
+    "trunk": "IM",
+    "primary": "IB",
+    "secondary": "IIA",
     "tertiary": "IIB",
 }
 
 FINAL_BIAS = {
-    "IA":  4.601,
-    "IM":  3.659,
-    "IB":  0.82,
+    "IA": 4.601,
+    "IM": 3.659,
+    "IB": 0.82,
     "IIA": 0.82,
     "IIB": 0.82,
 }
+
 
 # load functions
 def get_average_access_time(df_population, Sink, graph):
@@ -120,6 +120,7 @@ def apply_road_elevation_correction(
     gpd.GeoDataFrame
         base_network with updated 'exposed' and 'exposed_values_depth' columns.
     """
+
     def adjust_depths(row):
         """Subtract road-category bias from raw sampled depths, clamp to 0."""
         serbian_cat = OSM_TO_SERBIAN_CATEGORY.get(row.get("highway"))
@@ -409,9 +410,7 @@ def flood_exposure_factory_accessibility(
         total=len(exposed_roads.groupby("subregion")),
     ):
         EdgeExposedList = subregion_exposed.id.values
-        base_network.loc[
-            base_network.id.isin(EdgeExposedList)
-        ].index.values
+        base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
         flooded_edges = base_network.loc[base_network.id.isin(EdgeExposedList)]
 
         non_empty_values = flooded_edges[flooded_edges["values"].apply(len) > 0][
@@ -739,9 +738,7 @@ def flood_exposure_emergency_service_accessibility(
         total=len(exposed_roads.groupby("subregion")),
     ):
         EdgeExposedList = subregion_exposed.id.values
-        base_network.loc[
-            base_network.id.isin(EdgeExposedList)
-        ].index.values
+        base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
         flooded_edges = base_network.loc[base_network.id.isin(EdgeExposedList)]
 
         non_empty_values = flooded_edges[flooded_edges["values"].apply(len) > 0][
@@ -1103,9 +1100,7 @@ def flood_exposure_analysis_agriculture(
         total=len(exposed_roads.groupby("subregion")),
     ):
         EdgeExposedList = subregion_exposed.id.values
-        base_network.loc[
-            base_network.id.isin(EdgeExposedList)
-        ].index.values
+        base_network.loc[base_network.id.isin(EdgeExposedList)].index.values
         flooded_edges = base_network.loc[base_network.id.isin(EdgeExposedList)]
 
         non_empty_values = flooded_edges[flooded_edges["values"].apply(len) > 0][
@@ -1315,7 +1310,10 @@ def flood_exposure_analysis_agriculture(
 
     print("\nAnalysis completed successfully!")
 
-def normalise_exposed_column(network: gpd.GeoDataFrame, col: str = "exposed") -> gpd.GeoDataFrame:
+
+def normalise_exposed_column(
+    network: gpd.GeoDataFrame, col: str = "exposed"
+) -> gpd.GeoDataFrame:
     """
     Ensure the exposed column is a clean boolean regardless of whether the
     source raster was binary (0/1 int) or continuous float depth values.
@@ -1323,6 +1321,7 @@ def normalise_exposed_column(network: gpd.GeoDataFrame, col: str = "exposed") ->
     """
     network[col] = network[col].fillna(0).astype(float) > 0
     return network
+
 
 def _run_factory_analysis(
     *, config, base_network, nodes, basins_data, graph, country_iso3, Subregion
@@ -1344,8 +1343,14 @@ def _run_factory_analysis(
 
     print("[factory] Running flood scenario analysis...")
     flood_exposure_factory_accessibility(
-        base_network, df_factories, Sink, Factory_criticality_folder,
-        basins_data, graph, country_iso3, Subregion,
+        base_network,
+        df_factories,
+        Sink,
+        Factory_criticality_folder,
+        basins_data,
+        graph,
+        country_iso3,
+        Subregion,
     )
     print("[factory] Done.")
 
@@ -1369,15 +1374,29 @@ def _run_agriculture_analysis(
 
     print("[agriculture] Running flood scenario analysis...")
     flood_exposure_analysis_agriculture(
-        base_network, df_agri, Agriculture_criticality_folder,
-        basins_data, graph, sinks_dict, country_iso3, Subregion,
+        base_network,
+        df_agri,
+        Agriculture_criticality_folder,
+        basins_data,
+        graph,
+        sinks_dict,
+        country_iso3,
+        Subregion,
     )
     print("[agriculture] Done.")
 
 
 def _run_emergency_analysis(
-    *, config, base_network, nodes, basins_data, df_settlements,
-    graph, country_iso3, Subregion, label
+    *,
+    config,
+    base_network,
+    nodes,
+    basins_data,
+    df_settlements,
+    graph,
+    country_iso3,
+    Subregion,
+    label,
 ):
     tqdm.pandas()
     print(f"[{label}] Loading data and computing baseline...")
@@ -1392,8 +1411,14 @@ def _run_emergency_analysis(
 
     print(f"[{label}] Running flood scenario analysis...")
     flood_exposure_emergency_service_accessibility(
-        accessibility_df, sink_df, criticality_folder,
-        basins_data, base_network, graph, country_iso3, Subregion,
+        accessibility_df,
+        sink_df,
+        criticality_folder,
+        basins_data,
+        base_network,
+        graph,
+        country_iso3,
+        Subregion,
     )
     print(f"[{label}] Done.")
 
@@ -1425,8 +1450,8 @@ def main():
     Subregion = "basins"
 
     # Flood-depth thresholds for exposure classification
-    Threshold = 0.1        # normal roads (m)
-    Stru_Threshold = 0.5   # bridges (m)
+    Threshold = 0.1  # normal roads (m)
+    Stru_Threshold = 0.5  # bridges (m)
 
     # ------------------------------------------------------------
     # 1. Shared setup: network, graph, basins, settlements
@@ -1435,7 +1460,9 @@ def main():
     base_network = gpd.read_parquet(config.Path_RoadNetwork)
 
     print("Applying road-category elevation bias correction...")
-    base_network = apply_road_elevation_correction(base_network, Threshold, Stru_Threshold)
+    base_network = apply_road_elevation_correction(
+        base_network, Threshold, Stru_Threshold
+    )
 
     print("Normalising exposed column...")
     base_network = normalise_exposed_column(base_network)
@@ -1469,9 +1496,24 @@ def main():
         futures = {
             executor.submit(_run_factory_analysis, **shared): "factory",
             executor.submit(_run_agriculture_analysis, **shared): "agriculture",
-            executor.submit(_run_emergency_analysis, **shared, df_settlements=df_settlements, label="firefighters"): "firefighters",
-            executor.submit(_run_emergency_analysis, **shared, df_settlements=df_settlements, label="hospitals"): "hospitals",
-            executor.submit(_run_emergency_analysis, **shared, df_settlements=df_settlements, label="police"): "police",
+            executor.submit(
+                _run_emergency_analysis,
+                **shared,
+                df_settlements=df_settlements,
+                label="firefighters",
+            ): "firefighters",
+            executor.submit(
+                _run_emergency_analysis,
+                **shared,
+                df_settlements=df_settlements,
+                label="hospitals",
+            ): "hospitals",
+            executor.submit(
+                _run_emergency_analysis,
+                **shared,
+                df_settlements=df_settlements,
+                label="police",
+            ): "police",
         }
         for future in as_completed(futures):
             label = futures[future]

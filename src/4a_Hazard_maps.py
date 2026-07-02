@@ -38,7 +38,9 @@ def main():
 
     # --- Flood depth map ---
     hazard_country = load_and_clip_flood_raster(config.flood_map_RP100, serbia)
-    plot_flood_depth_map(hazard_country, config.figure_path, dpi=600, show_figures=config.show_figures)
+    plot_flood_depth_map(
+        hazard_country, config.figure_path, dpi=600, show_figures=config.show_figures
+    )
 
     # --- Flood depth on roads ---
     roads = read_road_network(config.Path_processed_road_network)
@@ -64,14 +66,37 @@ def main():
     )
 
     # --- Snow drift map ---
-    plot_snowdrift_map(config.Path_snow_drift_data, serbia_roads_mercator, kosovo_roads_mercator, config.figure_path, dpi=600, show_figures=config.show_figures)
+    plot_snowdrift_map(
+        config.Path_snow_drift_data,
+        serbia_roads_mercator,
+        kosovo_roads_mercator,
+        config.figure_path,
+        dpi=600,
+        show_figures=config.show_figures,
+    )
 
     # --- Landslides map (filtered to Klizište) ---
-    plot_landslides_map(config.Path_landslide_data, serbia_roads_mercator, kosovo_roads_mercator, config.figure_path, dpi=600, show_figures=config.show_figures)
+    plot_landslides_map(
+        config.Path_landslide_data,
+        serbia_roads_mercator,
+        kosovo_roads_mercator,
+        config.figure_path,
+        dpi=600,
+        show_figures=config.show_figures,
+    )
 
     # --- Wildfire raster and roads ---
-    plot_wildfire_raster_map(config.wildfire_risk, serbia_roads_mercator, kosovo_roads_mercator, config.figure_path, dpi=600, show_figures=config.show_figures)
-    roads_with_risk = assign_wildfire_risk_to_roads(config.wildfire_risk, baseline_roads)
+    plot_wildfire_raster_map(
+        config.wildfire_risk,
+        serbia_roads_mercator,
+        kosovo_roads_mercator,
+        config.figure_path,
+        dpi=600,
+        show_figures=config.show_figures,
+    )
+    roads_with_risk = assign_wildfire_risk_to_roads(
+        config.wildfire_risk, baseline_roads
+    )
     plot_wildfire_roads_AB(
         wildfire_path=config.wildfire_risk,
         roads_with_risk=roads_with_risk,
@@ -89,7 +114,11 @@ def main():
 
     # --- Landslide susceptibility map ---
     plot_landslide_susceptibility_map(
-        config.landslide_susceptibility, serbia_roads_mercator, kosovo_roads_mercator, config.figure_path, dpi=600,
+        config.landslide_susceptibility,
+        serbia_roads_mercator,
+        kosovo_roads_mercator,
+        config.figure_path,
+        dpi=600,
         show_figures=config.show_figures,
     )
 
