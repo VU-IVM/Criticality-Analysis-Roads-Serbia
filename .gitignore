@@ -75,6 +75,7 @@ Thumbs.db
 # -----------------------
 .vscode/
 .idea/
+.claude/
 
 # -----------------------
 # Flowcharts
@@ -91,3 +92,17 @@ old_version
 # Local-only helper scripts and notebooks (kept locally, not tracked)
 # -----------------------
 helper scripts and notebooks/
+
+# -----------------------
+# ArcGIS deliverables and notebooks
+# -----------------------
+ArcGIS_deliverable/serbia_criticality_atlas.lyrx
+ArcGIS_deliverable/BlueSpot_Serbia_Criticality_Atlas.ppkx
+ArcGIS_deliverable/final_results
+ArcGIS_deliverable/local_accessibility
+ArcGIS_deliverable/hazard_exposure
+ArcGIS_deliverable/travel_disruption
+ArcGIS_deliverable/layer_inventory.md
+ArcGIS_notebooks/BlueSpot_hazard.aprx
+ArcGIS_notebooks/BlueSpot_hazard.aprx.xml
+ArcGIS_notebooks/.backups/BlueSpot_hazard.aprx.tmp
